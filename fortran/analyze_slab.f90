@@ -934,6 +934,7 @@ write(*,*) "Calculate element density distributions along z-axis..."
 z_dens = 0.d0
 allocate(z_vals(nbins))
 z_vals=0.d0
+write(*,*) "nelems",nelems
 if (use_reaxff) then
    do i=frame_first,nframes
       do l=1,natoms

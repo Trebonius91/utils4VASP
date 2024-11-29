@@ -81,7 +81,7 @@ write(*,*) "PROGRAM analyze_slab: Evaluation of VASP DFT/ML-FF (or LAMMPS ReaxFF
 write(*,*) " trajectories for surface slabs with two or three elements."
 write(*,*) "The file XDATCAR (or dump.xyz in case of xyz trajectories) must be present!"
 write(*,*) "The following command line arguments can/must be given (with - sign!):"
-write(*,*) " -reaxff : A ReaxFF xyz trajectory 'dump.xyz' will be analyzed."
+write(*,*) " -lammps : A LAMMPS xyz trajectory 'dump.xyz' will be analyzed."
 write(*,*) "     here, the box dimensions must be given separately in 'box_dims.dat',"
 write(*,*) "     with the format 'xlen  ylen  zlen' (one line)"
 write(*,*) " -write_traj : The file 'trajectory.xyz' containing all frames of XDATCAR"
@@ -91,8 +91,8 @@ write(*,*) "     atoms to file. Example: track_atoms=1,78,178"
 write(*,*) " -timestep=[value] : For atom tracking ordiffusion calculations, the time step"
 write(*,*) "     in fs (take longer step if not every step was written during dynamics!)"
 write(*,*) " -dens_bins=[number] : Number of bins for element densities (default: 501)"
-write(*,*) " -rdf : The radial distribution functions of the second component around "
-write(*,*) "     the first shall be calculated. Then, also the total number of neighbors "
+write(*,*) " -rdf : The radial distribution functions for all element combinations  "
+write(*,*) "     shall be calculated. Then, also the total number of neighbors "
 write(*,*) "     up to a certain distance will be calculated."
 write(*,*) " -rdf_bins=[number] : Number of bins for RDF evaluation (default: 201)"
 write(*,*) " -rdf_cutoff=[value]: Cutoff for RDF evalulation (default: 8 Angstrom)"
@@ -100,11 +100,11 @@ write(*,*) " -frame_first=[number] : First trajectory frame that shall be evalua
 write(*,*) "     the script (e.g., in order to skip equilibration parts) (default: 1)"
 write(*,*) " -z_shift=[value] : The z-coordinates of the frames are shifted by the value,"
 write(*,*) "     given in direct coordinates (0 to 1.0)."
-write(*,*) " -z_val_max=[value] : Usually, the slab is assumed to be located in the lower "
-write(*,*) "     half of the simulation cell (small z values). If z is large, close to 1 "
-write(*,*) "     in direct coordinates, the atoms are moved by -1 in z-coordinates. If the"
-write(*,*) "     slab is located in the upper half or correction is not needed at all, set"
-write(*,*) "     this value to 1.0. (default: 0.9)"
+!write(*,*) " -z_val_max=[value] : Usually, the slab is assumed to be located in the lower "
+!write(*,*) "     half of the simulation cell (small z values). If z is large, close to 1 "
+!write(*,*) "     in direct coordinates, the atoms are moved by -1 in z-coordinates. If the"
+!write(*,*) "     slab is located in the upper half or correction is not needed at all, set"
+!write(*,*) "     this value to 1.0. (default: 0.9)"
 write(*,*) " -cls_element=[element]: CLS calculation templates will be generated for"
 write(*,*) "     the chosen element."
 write(*,*) " -cls_slices=[number]: How many different slices along the z-coordinate where "
@@ -122,7 +122,7 @@ write(*,*) "     in the slab separately, via the mean square displacement (MSD).
 use_reaxff = .false.
 do i = 1, command_argument_count()
    call get_command_argument(i, arg)
-   if (trim(arg)  .eq. "-reaxff") then
+   if (trim(arg)  .eq. "-lammps") then
       use_reaxff = .true.
    end if
 end do
@@ -393,11 +393,25 @@ end if
 !    First, determine the number of lines in the XDATCAR file
 !
 if (use_reaxff) then
+   open(unit=45,file="dump.xyz",status="old",iostat=readstat)
+   if (readstat .ne. 0) then
+      write(*,*)
+      write(*,*) "The file dump.xyz with the trajectory is not there!"
+      write(*,*)
+      stop
+   end if
    call system("wc -l dump.xyz > dump_length")
    open(unit=45,file="dump_length",status="old")
    read(45,*) dump_lines
    close(45)
-else         
+else      
+   open(unit=45,file="XDATCAR",status="old",iostat=readstat)
+   if (readstat .ne. 0) then
+      write(*,*)
+      write(*,*) "The file XDATCAR with the trajectory is not there!"
+      write(*,*)
+      stop
+   end if   
    call system("wc -l XDATCAR > xdat_length")
    open(unit=45,file="xdat_length",status="old")
    read(45,*) xdat_lines

@@ -36,7 +36,10 @@ print('''
      for example for frequency calculations, where a surface is kept fix.
      Example: freeze=Pt,O (Pt and O atoms will be kept fix) 
   -select_el=elems : Select all elements whose atoms shall be modified,
-     for example with a shift command. Same syntax as for freeze"
+     for example with a shift command. Same syntax as for freeze.
+  -select_ind=numbers : Select all atoms by index (start with 1) which
+     shall be modified, for example with a shift command. Both single 
+     numbers and ranges can be given, for example: select_ind=1,7-13,56
   -insert_struc=a,b,c : Insert the structure given by POSCAR_insert into
      the current POSCAR. The center of mass of the inserted structure is 
      moved to the position given by a,b,c in direct coordinates.
@@ -69,6 +72,7 @@ writexyz=False
 bottom=False
 insert=False
 select_el=False
+select_ind=False
 map2unit=False
 dist_remove=2.5
 
@@ -94,6 +98,9 @@ for arg in sys.argv:
       if param == "-select_el":
          select_list=actval.split(",")
          select_el=True
+      if param == "-select_ind":
+         select_ind_list=actval.split(",")
+         select_ind=True
       if param == "-remove_dist":
          dist_remove=float(actval)
       if param == "-bottom":
@@ -229,6 +236,9 @@ for name in names:
    select_mask.append(True)
 
 
+#
+#    Select by element: Set all atoms of one or several elements true
+#
 if select_el:
    select_mask=[] 
    for name in names:
@@ -237,7 +247,23 @@ if select_el:
          if name == selected:
             select_act=True
       select_mask.append(select_act)
-
+#
+#    Select by index: Set either single atoms or whole ranges of atoms true
+#
+if select_ind:
+   select_mask=[]
+   for name in names:
+      select_mask.append(False)
+   for line in select_ind_list:
+      multiply_list=line.split("-")   
+      if len(multiply_list) == 1:
+         index1=int(multiply_list[0])
+         select_mask[index1-1]=True
+      if len(multiply_list) == 2:
+         index1=int(multiply_list[0])
+         index2=int(multiply_list[1])+1
+         for i in range (index1,index2):
+            select_mask[i-1]=True
 
 # Define coordinate transformation as functions in order to use them intermediately!
 # F1: FRAC2CART
@@ -290,7 +316,7 @@ def trans_cart2frac(xyz,natoms,a_vec,b_vec,c_vec):
 if insert:
    map2unit=True
 
-# 0: MAP ALL ATOMS TO CENTRAL UNI CELL ################
+# 0: MAP ALL ATOMS TO CENTRAL UNIT CELL ################
 if map2unit:
    print(" Map all atoms to the central unit cell, i.e., remove image flags ...") 
 

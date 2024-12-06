@@ -12,6 +12,7 @@ real(kind=8)::coord_scale
 real(kind=8)::a_vec(3),b_vec(3),c_vec(3)
 real(kind=8)::a_vec_new(3),b_vec_new(3)
 character(len=2)::el_name
+character(len=80)::arg_a
 integer::natoms,natoms_chosen
 integer::ind1,ind2,ind3,ind4
 character(len=1),allocatable::active(:,:)
@@ -21,6 +22,7 @@ real(kind=8)::vec1(2),vec2(2),origin(3)
 real(kind=8)::vec_final(2,2),pos_act(2)
 integer::vec_inds(6,2)
 integer::readstat
+logical::read_span
 real(kind=8)::angle,arg
 real(kind=8)::pi
 real(kind=8)::lambda,mu
@@ -33,22 +35,23 @@ character(len=1)::active_chosen(10000,3)
 
 pi=3.14159265359d0
 
-write(*,*) "This program is able to cut an (almost) arbitrary unit cell"
-write(*,*) " from a large given surface."
-write(*,*) "Two files must be given:"
-write(*,*) " a) POSCAR_surf, containing the large reference unit cell"
-write(*,*) " b) atom_inds.txt, containing three atom numbers, each in a line"
-write(*,*) "    These indices should be chosen in advance, e.g., with VESTA"
-write(*,*) "The unit cell vectors will be set up in the following way:"
-write(*,*) " vector1=atom2-atom1"
-write(*,*) " vector2=atom3-atom1"
+write(*,*)
+write(*,*) "PROGRAM cut_unitcell: cutting an (almost) arbitrary unit"
+write(*,*) " cell from a large given surface."
+write(*,*) "A POSCAR file must be given with a large reference unit cell."
+write(*,*) " This file must have cartesian coordinates."
+write(*,*) "Give the numbers of three atoms that shall span the plane "
+write(*,*) " of the cut out unit cell with the following command:"
+write(*,*) " -span_atoms=[indices] "
+write(*,*) "After execution, a file named POSCAR_cut with the cut unit "
+write(*,*)"  cell is written."
 !
 !     First, read in the given POSCAR of the large surface
 !
 
-open(unit=16,file="POSCAR_surf",status="old",iostat=readstat)
+open(unit=16,file="POSCAR",status="old",iostat=readstat)
 if (readstat .ne. 0) then
-   write(*,*) "The file 'POSCAR_surf' could not been found!"
+   write(*,*) "The file 'POSCAR' could not been found!"
    stop
 end if       
 read(16,*)
@@ -69,19 +72,33 @@ close(16)
 
 
 !
-!     Second, read indices of chosen atoms from file atom_inds.txt
+!     Second, read indices of chosen atoms from command -span_atoms
 !
+read_span=.false.
+do i = 1, command_argument_count()
+   call get_command_argument(i, arg_a)
+   if (trim(arg_a(1:12))  .eq. "-span_atoms=") then
+      read(arg_a(13:),*,iostat=readstat) ind1,ind2,ind3
+      read_span=.true.
+   end if
+end do
 
-open(unit=17,file="atom_inds.txt",status="old",iostat=readstat)
-if (readstat .ne. 0) then
-   write(*,*) "The file 'atom_inds.txt' could not been found!"
+if (.not. read_span) then
+   write(*,*) "Please give the command -span_atoms to define the edged of the unitcell!"
    stop
 end if        
-read(17,*) ind1
-read(17,*) ind2
-read(17,*) ind3
-close(17)
-
+if (ind1 .le. 0 .or. ind1 .gt. natoms) then
+   write(*,*) "Please give a valid number for the first atom!"
+   stop
+end if        
+if (ind2 .le. 0 .or. ind2 .gt. natoms) then
+   write(*,*) "Please give a valid number for the second atom!"
+   stop
+end if   
+if (ind3 .le. 0 .or. ind3 .gt. natoms) then
+   write(*,*) "Please give a valid number for the third atom!"
+   stop
+end if
 !
 !     Now locate all atoms given in atom_inds.txt     
 !
@@ -164,7 +181,7 @@ end do outer
 !
 !     Write resulting POSCAR with new unit cell
 !
-open(unit=27,file="POSCAR",status="replace")
+open(unit=27,file="POSCAR_cut",status="replace")
 write(27,*) "New unit cell, build by cut_unitcell.f90"
 write(27,*) coord_scale
 a_vec_new(1:2)=vec1
@@ -188,6 +205,10 @@ end do
 
 close(27)
 
+write(*,*)
+write(*,*) "File POSCAR_cut has been written!"
+write(*,*) "cut_unitcell exiting normally..."
+write(*,*)
 
 end program cut_unitcell
 

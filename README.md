@@ -16,9 +16,6 @@ of surface or bulk systems.
 
 A description of all scripts/programs as well as an overview of important VASP calculations and how to do them is given in the [utils4VASP-Wiki](https://github.com/Trebonius91/utils4VASP/wiki)!
 
-In addition to the scripts, a manual is delivered (subfolder manual), where a general overview for the setup
-of VASP calculations for interface systems is given besides the detailed explanation of all included scripts and programs.
-
 The scripts and programs are grouped by the programming language of their implementation and alphabetically within their sections.
 
 Currently included are:

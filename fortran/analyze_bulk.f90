@@ -1,37 +1,52 @@
 !
-!     This program reads in a XDATCAR file and calculates 
-!     different dynamical observables 
-!     (like mean-square-displacements, velocity autocorrelations)
-!     from it
-!     Finally, diffusion coefficients are calculated as well
+!    analyze_bulk:  reads in a XDATCAR file of a 
+!      three-dimensional bulk system and calculates 
+!      different dynamical observables like diffusion 
+!      coefficients or vibrational density of states
 !
-program eval_md
+!    Part of VASP4CLINT
+!     Julien Steffen, 2024 (julien.steffen@fau.de)
+!
+module fftw_mod
+   use,intrinsic :: iso_c_binding
+   include 'fftw3.f03'
+
+   integer::Np
+   integer, parameter :: Nmax = 1024
+   type(C_PTR) :: plan
+   real(kind=8)::factor
+end module fftw_mod
+
+
+program analyze_bulk
 implicit none
 integer::i,j,k,l,m
 integer::readstat
 logical::calc_msd,calc_vacf,read_dt,npt_traj,print_new
+logical::vib_dens
 real(kind=8)::a_read(3),b_read(3),c_read(3)
 real(kind=8)::a_len,b_len,c_len
 real(kind=8),allocatable::a_lens(:),b_lens(:),c_lens(:)
 integer::nelems,natoms,nframes,xdat_lines
 integer,allocatable::el_nums(:)
-integer::frames_skip
+integer::frames_skip,nframes_use
 real(kind=8),allocatable::xyz(:,:,:)
 real(kind=8)::diff_vec(3)
 real(kind=8)::time_step
 real(kind=8)::msd_act,volume
 real(kind=8),allocatable::pos_diff(:)
 real(kind=8),allocatable::z_axis(:)
-real(kind=8),allocatable::msd_func(:,:),vacf_func(:,:)
+real(kind=8),allocatable::msd_func(:,:),vacf_func(:)
 real(kind=8),allocatable::vel_first(:),vel_act(:)
 real(kind=8),allocatable::times(:),diff(:)
 real(kind=8),allocatable::vector1(:),vector2(:),vector3(:)
-real(kind=8)::vacf_int
+real(kind=8)::vacf_int,norm_factor
 character(len=2),allocatable::el_names(:)
 real(kind=8),allocatable::rdf_plot(:,:,:)
 real(kind=8)::pos1(3),pos2(3)
 integer::avg_lo,avg_hi
-real(kind=8)avg_diff
+real(kind=8)::avg_diff
+real(kind=8)::corrt
 character(len=32)::arg
 character(len=80)::line,all_els
 character(len=2)::el1,el2,el3
@@ -39,7 +54,7 @@ logical::eval_stat(10)
 real(kind=8)::box_volume
 real(kind=8)::dist,pi,rdf_cutoff
 real(kind=8)::xlen,ylen,zlen
-integer::frame_first
+integer::frame_first,intervals,frames_part
 !  RDF calculation
 integer::ig,ngr,npart1,npart2
 real(kind=8)::nid,r_act,rho,vb
@@ -51,15 +66,19 @@ logical::calc_rdf,read_time
 
 pi=3.141592653589793238
 
-write(*,*) "This program calculates dynamical observables from MD trajectories!"
+write(*,*) "PROGRAM analyze_bulk: evaluation of MD trajectories from three-dimensional"
+write(*,*) " bulk systems."
 write(*,*) "Only a XDATCAR file in VASP format needs to be present."
 write(*,*) "Usage: eval_vasp_md -command1 -command2 ..."
 write(*,*)
 write(*,*) "List of commands:"
-write(*,*) "-msd:  the mean square displacement (and diffusion coefficient) is calculated."
-write(*,*) "-vacf:  the velocity autocorrelation function (and diffusion coefficient) "
-write(*,*) "        is calculated."
+write(*,*) "-msd:  the mean square displacement (and self-diffusion coefficient) of up to"
+write(*,*) "  three different elements is calculated."
+write(*,*) "-vib_dens:  the vibrational density of states (IR spectrum without intensities)"
+write(*,*) "        is calculated from the VACF"
 write(*,*) "-dt=[time step in fs]: The time step used for MD simulation, in fs."
+write(*,*) "-corrt=[time in fs]: Length of the VACF correlation interval to be calculated."
+write(*,*) "       (default: 1000 fs)"
 write(*,*) "-readtime: The time of each XDATCAR (in s) will be read in from file 'times.dat'"
 write(*,*) "    useful for the evaluation of kinetic Monte Carlo simulations."
 write(*,*) "-skip=[steps to skip]: If the first N steps shall be skipped (equilibration.)"
@@ -80,12 +99,12 @@ do i = 1, command_argument_count()
    end if
 end do
 
-calc_vacf = .false.
+vib_dens = .false.
 do i = 1, command_argument_count()
    call get_command_argument(i, arg)
-   if (trim(arg)  .eq. "-vacf") then
+   if (trim(arg)  .eq. "-vib_dens") then
       calc_vacf = .true.
-      write(*,*) "The velocity autocorrelation function (VACF) will be calculated!"
+      write(*,*) "The vibrational density of states will be calculated!"
    end if
 end do
 
@@ -155,6 +174,15 @@ do i = 1, command_argument_count()
    if (trim(arg)  .eq. "-rdf") then
       calc_rdf = .true.
       write(*,*) "Radial distribution functions will be calculated."
+   end if
+end do
+
+corrt = 1000
+do i = 1, command_argument_count()
+   call get_command_argument(i, arg)
+   if (trim(arg(1:7))  .eq. "-corrt=") then
+      read(arg(8:32),*) corrt
+      write(*,*) "The VACF correlation time is ",corrt," fs."
    end if
 end do
 
@@ -253,9 +281,9 @@ else
    write(*,*) "Number of frames:",nframes
 
    allocate(a_lens(nframes),b_lens(nframes),c_lens(nframes))
-   a_lens(1)=a_len
-   b_lens(1)=b_len
-   c_lens(1)=c_len
+   a_lens(1)=a_read(1)
+   b_lens(1)=b_read(2)
+   c_lens(1)=c_read(3)
 
    allocate(xyz(3,natoms,nframes))
 
@@ -520,40 +548,55 @@ if (calc_msd) then
 end if        
 
 !
-!    Calculate the velocity autocorrelation function (VACF)
+!    Calculate the vibrational density of states from the velocity autocorrelation
+!     function (VACF)
 !
-
+!   Number of intervals for which VACF is calculated
+!
 if (calc_vacf) then
+
+   intervals=int(((nframes-frames_skip)*time_step)/corrt)
+   frames_part=int(corrt/time_step)
+   write(*,*) "inter",intervals,frames_part
+
    allocate(vel_first(natoms*3))
    allocate(vel_act(natoms*3))
-   allocate(vacf_func(nframes-frames_skip,1))
-   do i=1,natoms
-      do k=1,3
-         vel_first((i-1)*3+k)=(xyz(k,i,2)-xyz(k,i,1))/time_step
-      end do
-   end do   
-   do i=1,nframes-frames_skip-1
-      do j=1,natoms
+   allocate(vacf_func(frames_part))
+   vacf_func=0.d0
+   do l=1,intervals
+      do i=1,natoms
          do k=1,3
-            vel_act((j-1)*3+k)=(xyz(k,j,i+1)-xyz(k,j,i))/time_step
+            vel_first((i-1)*3+k)=(xyz(k,i,2+(l-1)*intervals)-xyz(k,i,1+(l-1)*intervals))/time_step
          end do
+      end do  
+      do i=1,frames_part-1
+         do j=1,natoms
+            do k=1,3
+               vel_act((j-1)*3+k)=(xyz(k,j,i+1+(l-1)*intervals)-xyz(k,j,i+(l-1)*intervals))/time_step
+            end do
+         end do
+         vacf_func(i)=vacf_func(i)+dot_product(vel_first,vel_act)/natoms/3.d0
       end do
-      vacf_func(i,1)=dot_product(vel_first,vel_act)/natoms/3.d0
    end do
 
+   vacf_func=vacf_func/vacf_func(1)
    open(unit=18,file="vacf_plot.dat",status="replace")
-   do i=1,nframes-frames_skip-1
-      write(18,*) vacf_func(i,1)
+   do i=1,frames_part
+      write(18,*) (i-1)*time_step, vacf_func(i)
    end do   
    close(18)
 
-   open(unit=19,file="vacf_integrate.dat",status="replace")
-   vacf_int=0.d0
-   do i=1,nframes-frames_skip-1
-      vacf_int=vacf_int+vacf_func(i,1)
-      write(19,*) vacf_int
+!
+!    Now execute the discrete fourier transform to obtain the frequency spectrum
+!
+   call rfft(vacf_func, frames_part)
+
+   open(unit=18,file="VDOS.dat",status="replace")
+   do i=1,frames_part
+      write(18,*) i*33.356/(frames_part*time_step)*1000d0,vacf_func(i)
    end do
    close(18)
+
 
 end if        
 
@@ -681,4 +724,41 @@ if (calc_rdf) then
 end if
 
 
-end program eval_vasp_md      
+end program analyze_bulk 
+
+
+!
+!     subroutine rfft: compute the real fast fourier transform for a
+!      given array of data
+!      Rewritten 09.10.2023 (updated to Fortran03/C interface)
+!    
+!     part of EVB
+!
+subroutine rfft(x,N)
+use fftw_mod
+implicit none
+integer,intent(in) :: N
+real(kind=8),intent(inout) :: x(N)
+complex(C_DOUBLE_COMPLEX),dimension(N)::ain,aout
+
+ain=x(1:N)
+
+!
+!     If this is the first execution, generate the FFT plan (optimized code for 
+!     local machine)
+!     If the plan already was generated for a different number of beads, destroy
+!     it in advance
+!
+if (N .ne. Np) then
+    if (Np .ne. 0) call fftw_destroy_plan(plan)
+    plan=fftw_plan_dft_1d(N,ain,aout,FFTW_FORWARD,FFTW_ESTIMATE)
+    factor = dsqrt(1.d0/N)
+    Np = N
+end if
+call fftw_execute_dft(plan,ain,aout)
+
+x = factor * real(aout(1:N))
+
+return
+end subroutine rfft
+

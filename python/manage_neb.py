@@ -26,7 +26,11 @@ print('''
  as its final structures.
  The following modes can be used (command line args.):
   -build : build a new NEB calculation from the given
-     end points 
+     end points. For building: the following keywords
+     need to be added:
+     - min1=[name] : name of the first frame (POSCAR file)
+     - min2=[name] : name of the last frame (POSCAR file)
+     - nframe=[number] : number of interpolated NEB frames
   -restart : Copy all CONTCAR files of the images to 
      POSCAR files such that the calculation can be 
      continued with the current structures
@@ -151,6 +155,250 @@ if restart_job or eval_job:
    print(" The number of calculated NEB frames is: " + str(nframes))
    print(" ")
 
+
+################################################################
+#     BUILD JOB 
+#
+if build_job:
+   print(" BUILD MODE: Generate structure input files from given POSCARs!")
+   print(" ")
+   poscar1="bla"
+   poscar2="blub"
+   nframes=0
+   for arg in sys.argv:
+      if re.search("=",arg):
+         param,actval=arg.split("=")
+         if param == "-min1":
+            poscar1=str(actval)
+         if param == "-min2":
+            poscar2=str(actval)
+         if param == "-nframes":
+            nframes=int(actval)
+   if poscar1 == "bla":
+      print("Please give the name of the first POSCAR file with -min1=[name]")
+      sys.exit(1)
+   if poscar2 == "blub":
+      print("Please give the name of the second POSCAR file with -min2=[name]")
+      sys.exit(1)
+   if nframes <= 2:
+      print("Please give the number of NEB frames (<2) with -nframes=[number]")
+      sys.exit(1)
+
+#   Open POSCAR file of first frame
+   poscar_in = open(poscar1,"r")
+
+   cartesian=False
+   selective=False
+
+   with poscar_in as infile:
+      line = infile.readline()
+      line = line.rstrip("\n")
+      line = infile.readline().rstrip("\n")
+      sys_scale = float(line)  # the global lattice scaling factor
+   # read in the lattice vectors a,b and c
+
+      a_vec=np.zeros(3)
+      b_vec=np.zeros(3)
+      c_vec=np.zeros(3)
+
+      line = infile.readline().rstrip("\n")
+      a_read = line.rstrip().split()[0:3]
+      line = infile.readline().rstrip("\n")
+      b_read = line.rstrip().split()[0:3]
+      line = infile.readline().rstrip("\n")
+      c_read = line.rstrip().split()[0:3]
+      for i in range(3):
+         a_vec[i]=float(a_read[i])
+         b_vec[i]=float(b_read[i])
+         c_vec[i]=float(c_read[i])
+   # read in the element ordering
+      coord_vec=np.zeros(3)
+      coord_vec[0]=a_vec[0]
+      coord_vec[1]=b_vec[1]
+      coord_vec[2]=c_vec[2]
+      line = infile.readline().rstrip("\n")
+      elements = line.rstrip().split()
+      nelem = len(elements)
+   # read in the number of elements 
+      line = infile.readline().rstrip("\n")
+      line_split = line.rstrip().split()
+
+      elem_num=[]
+      natoms1=0
+      names=[]
+      for i in range(nelem):
+         elem_num.append(int(line_split[i]))
+         # total number of atoms
+         natoms1=natoms1+elem_num[i]
+         for j in range(elem_num[i]):
+            names.append(elements[i])
+      natoms1=int(natoms1)
+   # read in the list of atoms 
+      xyz1 = np.zeros((natoms1,3))
+   # check if selective dynamics was used
+      line = infile.readline()
+      line_split = line.rstrip().split()
+      if (line_split[0] == "Selective" or line_split[0] == "selective"
+         or line_split[0] == "Select" or line_split[0] == "select"):
+         selective=True
+         print(" The first POSCAR file has selective dynamics.")
+      if selective:
+         line = infile.readline().rstrip("\n")
+      line_parts = line.split()
+      if (line_parts[0] != "Direct" and line_parts[0] != "direct"  
+                and line_parts[0] != " Direct" and line_parts[0] != " direct"):
+         cartesian=True
+         print(" The first POSCAR has cartesian coordinates.")
+      else:
+         print(" The first POSCAR has direct coordinates.")
+
+      print(" ")
+      for i in range(natoms1):
+         line = infile.readline().rstrip("\n")
+         xyz_read = line.rstrip().split()[0:3]
+         if selective:
+            select_read = line.rstrip().split()[3:6]
+            coord_select.append(select_read[0] + " " + select_read[1] + " " + select_read[2]) 
+         for j in range(3):
+            xyz1[i][j]=float(xyz_read[j]) 
+
+#   Open POSCAR file of last frame
+   poscar_in = open(poscar2,"r")
+
+   cartesian=False
+   selective=False
+
+   with poscar_in as infile:
+      line = infile.readline()
+      line = line.rstrip("\n")
+      line = infile.readline().rstrip("\n")
+      sys_scale = float(line)  # the global lattice scaling factor
+   # read in the lattice vectors a,b and c
+
+      a_vec=np.zeros(3)
+      b_vec=np.zeros(3)
+      c_vec=np.zeros(3)
+
+      line = infile.readline().rstrip("\n")
+      a_read = line.rstrip().split()[0:3]
+      line = infile.readline().rstrip("\n")
+      b_read = line.rstrip().split()[0:3]
+      line = infile.readline().rstrip("\n")
+      c_read = line.rstrip().split()[0:3]
+      for i in range(3):
+         a_vec[i]=float(a_read[i])
+         b_vec[i]=float(b_read[i])
+         c_vec[i]=float(c_read[i])
+   # read in the element ordering
+      coord_vec=np.zeros(3)
+      coord_vec[0]=a_vec[0]
+      coord_vec[1]=b_vec[1]
+      coord_vec[2]=c_vec[2]
+      line = infile.readline().rstrip("\n")
+      elements = line.rstrip().split()
+      nelem = len(elements)
+   # read in the number of elements
+      line = infile.readline().rstrip("\n")
+      line_split = line.rstrip().split()
+
+      elem_num=[]
+      natoms2=0
+      names=[]
+      for i in range(nelem):
+         elem_num.append(int(line_split[i]))
+         # total number of atoms
+         natoms2=natoms2+elem_num[i]
+         for j in range(elem_num[i]):
+            names.append(elements[i])
+      natoms2=int(natoms2)
+   # read in the list of atoms
+      xyz2 = np.zeros((natoms2,3))
+   # check if selective dynamics was used
+      line = infile.readline()
+      line_split = line.rstrip().split()
+      if (line_split[0] == "Selective" or line_split[0] == "selective"
+         or line_split[0] == "Select" or line_split[0] == "select"):
+         selective=True
+         print(" The second POSCAR file has selective dynamics.")
+      if selective:
+         line = infile.readline().rstrip("\n")
+      line_parts = line.split()
+      if (line_parts[0] != "Direct" and line_parts[0] != "direct"
+                and line_parts[0] != " Direct" and line_parts[0] != " direct"):
+         cartesian=True
+         print(" The second POSCAR has cartesian coordinates.")
+      else:
+         print(" The second POSCAR has direct coordinates.")
+
+      print(" ")
+      for i in range(natoms2):
+         line = infile.readline().rstrip("\n")
+         xyz_read = line.rstrip().split()[0:3]
+         if selective:
+            select_read = line.rstrip().split()[3:6]
+            coord_select.append(select_read[0] + " " + select_read[1] + " " + select_read[2])
+         for j in range(3):
+            xyz2[i][j]=float(xyz_read[j])
+
+   # Build the initial frames of the NEB by interpolating the end points
+
+   xyz_new = np.zeros((natoms1,3))
+
+   for frame in range(0,nframes+2):
+      if frame < 10: 
+         newpath="0"+str(frame)
+      else:
+         newpath=str(frame)
+      if not os.path.exists(newpath):
+         os.makedirs(newpath)
+      os.chdir(newpath)
+
+      poscar_out = open("POSCAR","w")
+      
+      original_stdout=sys.stdout
+      with poscar_out as outfile:
+         sys.stdout = outfile
+
+         print("NEB frame No. ",frame," written by manage_neb.py")
+         print(sys_scale)
+         print("{:18.11f}".format(a_vec[0]) + "  " + "{:18.11f}".format(a_vec[1]) +
+                  "  " + "{:18.11f}".format(a_vec[2]))
+         print("{:18.11f}".format(b_vec[0]) + "  " + "{:18.11f}".format(b_vec[1]) + 
+                  "  " + "{:18.11f}".format(b_vec[2]))
+         print("{:18.11f}".format(c_vec[0]) + "  " + "{:18.11f}".format(c_vec[1]) + 
+                  "  " + "{:18.11f}".format(c_vec[2]))
+         for i in range(nelem):
+            outfile.write(elements[i] + " ")
+         print(" ")
+
+         for elem in elem_num:
+            outfile.write(str(elem) + " ")
+   
+         print(" ")
+         if selective:
+            print("Selective Dynamics")
+         if cartesian:
+            print("Cartesian")
+         else:
+            print("Direct")
+
+         for i in range(natoms1):
+            for j in range(3):
+               xyz_new[i][j]=xyz1[i][j]+(frame/nframes)*(xyz2[i][j]-xyz1[i][j])
+
+
+         if selective:
+            for i in range(natoms1):
+
+               print("{:20.11f}".format(xyz_new[i][0]) + " " + "{:20.11f}".format(xyz_new[i][1]) + " " +
+                 "{:20.11f}".format(xyz_new[i][2]) + "     " + coord_select[i])
+         else:       
+            for i in range(natoms1):
+               print("{:20.11f}".format(xyz_new[i][0]) + " " + "{:20.11f}".format(xyz_new[i][1]) + " " +
+                    "{:20.11f}".format(xyz_new[i][2])) 
+            os.chdir("..")
+            sys.stdout=original_stdout
+   print(" Generation of NEB input finished!")
 
 ################################################################
 #     RESTART JOB 

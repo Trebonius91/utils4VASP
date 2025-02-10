@@ -15,8 +15,8 @@ import math
 import random
 
 print('''
-This script manages the buildup of unary/binary/ternary metal 
-alloy systems in a randomized manner, i.e., the number 
+This script manages the buildup of unary/binary/ternary/quaternary 
+metal alloy systems in a randomized manner, i.e., the number 
 of element atoms representing the overall composition
 is placed randomically in a regular cubic grid.
 
@@ -411,13 +411,13 @@ with open("POSCAR","w") as f:
    sys.stdout = f
 
    if elnum == 1:
-      print("SCALMS system: " + el1 + str(natoms1))
+      print("alloy system: " + el1 + str(natoms1))
    if elnum == 2:
-      print("SCALMS system: " + el1 + str(natoms1) + el2 + str(natoms2)) 
+      print("alloy system: " + el1 + str(natoms1) + el2 + str(natoms2)) 
    if elnum == 3:
-      print("SCALMS system: " + el1 + str(natoms1) + el2 + str(natoms2) + el3 +str(natoms3)) 
+      print("alloy system: " + el1 + str(natoms1) + el2 + str(natoms2) + el3 +str(natoms3)) 
    if elnum == 4:
-      print("SCALMS system: " + el1 + str(natoms1) + el2 + str(natoms2) + el3 +str(natoms3) + el4 +str(natoms4))
+      print("alloy system: " + el1 + str(natoms1) + el2 + str(natoms2) + el3 +str(natoms3) + el4 +str(natoms4))
       
    print(" 1 ")
    print("  " + str(xlen) + "  0.0   0.0")

@@ -69,7 +69,7 @@ print('''
 
 # If select_dist is active: the maximum distance of atoms free for optimization
 # to the adatoms
-opt_dist = 10.0
+opt_dist = 5.0
 
 # The absolute path to the ionic liquid molecules
 mol_path="/home/jsteffen/work/build_adsorbates_input/"

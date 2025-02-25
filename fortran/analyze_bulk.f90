@@ -24,22 +24,33 @@ integer::i,j,k,l,m
 integer::readstat
 logical::calc_msd,calc_vacf,read_dt,npt_traj,print_new
 logical::vib_dens
+logical::dens_cube
 real(kind=8)::a_read(3),b_read(3),c_read(3)
 real(kind=8)::a_len,b_len,c_len
 real(kind=8),allocatable::a_lens(:),b_lens(:),c_lens(:)
 integer::nelems,natoms,nframes,xdat_lines
 integer,allocatable::el_nums(:)
 integer::frames_skip,nframes_use
+integer::gridx,gridy,gridz
+integer::stepx,stepy,stepz
+real(kind=8)::distance
+integer::i1,j1,k1,i_new,j_new,k_new
+integer::gridx_act,gridy_act,gridz_act
+integer::inc,elnumber
+real(kind=8)::a2bohr
+character(len=30)::cube_name
+real(kind=8),allocatable::dens_3d(:,:,:,:)
 real(kind=8),allocatable::xyz(:,:,:)
 real(kind=8)::diff_vec(3)
 real(kind=8)::time_step
 real(kind=8)::msd_act,volume
 real(kind=8),allocatable::pos_diff(:)
 real(kind=8),allocatable::z_axis(:)
-real(kind=8),allocatable::msd_func(:,:),vacf_func(:)
+real(kind=8),allocatable::msd_func(:,:),vacf_func(:),vacf_pad(:)
 real(kind=8),allocatable::vel_first(:),vel_act(:)
 real(kind=8),allocatable::times(:),diff(:)
 real(kind=8),allocatable::vector1(:),vector2(:),vector3(:)
+real(kind=8),allocatable::vector4(:),vector5(:)
 real(kind=8)::vacf_int,norm_factor
 character(len=2),allocatable::el_names(:)
 real(kind=8),allocatable::rdf_plot(:,:,:)
@@ -49,7 +60,7 @@ real(kind=8)::avg_diff
 real(kind=8)::corrt
 character(len=32)::arg
 character(len=80)::line,all_els
-character(len=2)::el1,el2,el3
+character(len=2)::el1,el2,el3,el4,el5
 logical::eval_stat(10)
 real(kind=8)::box_volume
 real(kind=8)::dist,pi,rdf_cutoff
@@ -65,7 +76,7 @@ integer::all_tasks,task_act,rdf_bins
 logical::calc_rdf,read_time
 
 pi=3.141592653589793238
-
+a2bohr=1.8897259886d0
 write(*,*) "PROGRAM analyze_bulk: evaluation of MD trajectories from three-dimensional"
 write(*,*) " bulk systems."
 write(*,*) "Only a XDATCAR file in VASP format needs to be present."
@@ -84,6 +95,7 @@ write(*,*) "    useful for the evaluation of kinetic Monte Carlo simulations."
 write(*,*) "-skip=[steps to skip]: If the first N steps shall be skipped (equilibration.)"
 write(*,*) "-npt: If a NpT trajectory (variable volume) shall be analyzed."
 write(*,*) "-rdf: Radial distribution functions will be calculated."
+write(*,*) "-dens_cube: Write Gaussian cube file with spatially resolved atomic densities."
 write(*,*) "-print: A new XDATCAR file (XDATCAR_new) with image flags will be written,"
 write(*,*) "        containing only frames after the skipped frames."
 write(*,*)
@@ -99,7 +111,7 @@ do i = 1, command_argument_count()
    end if
 end do
 
-vib_dens = .false.
+calc_vacf = .false.
 do i = 1, command_argument_count()
    call get_command_argument(i, arg)
    if (trim(arg)  .eq. "-vib_dens") then
@@ -116,6 +128,23 @@ do i = 1, command_argument_count()
       write(*,*) "The time of each step will be read in from file 'times.dat'!"
    end if
 end do
+
+dens_cube = .false.
+do i = 1, command_argument_count()
+   call get_command_argument(i, arg)
+   if (trim(arg)  .eq. "-dens_cube") then
+      dens_cube = .true.
+      write(*,*) "The averaged atomic densities are written to 'densities.cube'!"
+   end if
+end do
+
+!
+!     Number of grid points per dimension for 3D element densities
+!
+gridx=100
+gridy=100
+gridz=100
+
 
 
 
@@ -158,6 +187,7 @@ do i = 1, command_argument_count()
       write(*,*) "The first ",frames_skip," frames shall be skipped."
    end if
 end do
+frame_first=1+frames_skip
 
 npt_traj = .false.
 do i = 1, command_argument_count()
@@ -210,17 +240,28 @@ all_els=line
 !    Determine number of elements 
 !
 
-read(line,*,iostat=readstat) el1,el2,el3
+
+read(line,*,iostat=readstat) el1,el2,el3,el4,el5
 if (readstat .ne. 0) then
-   read(line,*,iostat=readstat) el1,el2
+   read(line,*,iostat=readstat) el1,el2,el3,el4
    if (readstat .ne. 0) then
-      read(line,*,iostat=readstat) el1
-      nelems=1
-   else 
-      nelems=2
-   end if   
+      read(line,*,iostat=readstat) el1,el2,el3
+      if (readstat .ne. 0) then
+         read(line,*,iostat=readstat) el1,el2
+         if (readstat .ne. 0) then
+            read(line,*,iostat=readstat) el1
+            nelems=1
+         else 
+            nelems=2
+         end if   
+      else    
+         nelems=3
+      end if        
+   else      
+       nelems=4
+   end if         
 else 
-   nelems=3
+   nelems=5
 end if   
 
 allocate(el_nums(nelems))
@@ -229,7 +270,6 @@ read(15,*) el_nums
 
 natoms=sum(el_nums)
 
-write(*,*) nelems
 write(*,*) "System setup:"
 write(*,*) "Number of atoms:",natoms
 write(*,*) "Number of elements:",nelems
@@ -240,10 +280,19 @@ if (nelems .ge. 2) then
    el_names(2)=el2   
    write(*,*) "  2. ",el2,": ",el_nums(2)," atoms"
 end if
-if (nelems .eq. 3) then
+if (nelems .ge. 3) then
    el_names(3)=el3     
    write(*,*) "  3. ",el3,": ",el_nums(3)," atoms"
 end if
+if (nelems .ge. 4) then
+   el_names(4)=el4
+   write(*,*) "  4. ",el4,": ",el_nums(4)," atoms"
+end if
+if (nelems .ge. 5) then
+   el_names(5)=el5
+   write(*,*) "  5. ",el5,": ",el_nums(5)," atoms"
+end if
+
 
 !
 !    For NVT trajectories: Each frame has only one header line 
@@ -428,6 +477,19 @@ else
       end do
    end do
 end if
+!
+!    For 3D element densities, determine number of steps around current position
+!    One Angstrom around
+!
+if (.not. npt_traj) then
+   stepx=int(gridx/a_len)
+   stepy=int(gridy/b_len)
+   stepz=int(gridz/c_len)
+else 
+   stepx=int(gridx/a_lens(nframes))
+   stepy=int(gridy/b_lens(nframes))
+   stepz=int(gridz/c_lens(nframes))
+end if        
 
 !
 !    For NPT trajectories, calculate the average volume
@@ -455,7 +517,6 @@ allocate(msd_func(nframes-frames_skip,nelems))
 allocate(times(nframes-frames_skip))
 allocate(diff(nframes-frames_skip))
 
-        
 if (calc_msd) then
 
    if (nelems .eq. 2) then
@@ -463,7 +524,15 @@ if (calc_msd) then
    end if        
    if (nelems .eq. 3) then
       allocate(vector1(el_nums(1)*3),vector2(el_nums(2)*3),vector3(el_nums(3)*3))
-   end if        
+   end if       
+   if (nelems .eq. 4) then
+      allocate(vector1(el_nums(1)*3),vector2(el_nums(2)*3),vector3(el_nums(3)*3),&
+               & vector4(el_nums(4)*3))      
+   end if 
+   if (nelems .eq. 5) then
+      allocate(vector1(el_nums(1)*3),vector2(el_nums(2)*3),vector3(el_nums(3)*3),&
+               & vector4(el_nums(4)*3),vector5(el_nums(5)*3))
+   end if
    do i=1,nframes-frames_skip
       if (read_time) then
          times(i) = time_list(i)/1E-15
@@ -491,7 +560,30 @@ if (calc_msd) then
          msd_func(i,2)=dot_product(vector2,vector2)/el_nums(2)
          vector3 = pos_diff((el_nums(1)+el_nums(2))*3+1:natoms*3)
          msd_func(i,3)=dot_product(vector3,vector3)/el_nums(3)
-      end if        
+      end if       
+      if (nelems .eq. 4) then
+         vector1 = pos_diff(1:el_nums(1)*3)
+         msd_func(i,1)=dot_product(vector1,vector1)/el_nums(1)
+         vector2 = pos_diff(el_nums(1)*3+1:(el_nums(1)+el_nums(2))*3)
+         msd_func(i,2)=dot_product(vector2,vector2)/el_nums(2)
+         vector3 = pos_diff(sum(el_nums(1:2))*3+1:sum(el_nums(1:3))*3)
+         msd_func(i,3)=dot_product(vector3,vector3)/el_nums(3)
+         vector4 = pos_diff(sum(el_nums(1:3))*3+1:natoms*3)
+         msd_func(i,4)=dot_product(vector4,vector4)/el_nums(4)
+      end if
+      if (nelems .eq. 5) then
+         vector1 = pos_diff(1:el_nums(1)*3)
+         msd_func(i,1)=dot_product(vector1,vector1)/el_nums(1)
+         vector2 = pos_diff(el_nums(1)*3+1:(el_nums(1)+el_nums(2))*3)
+         msd_func(i,2)=dot_product(vector2,vector2)/el_nums(2)
+         vector3 = pos_diff(sum(el_nums(1:2))*3+1:sum(el_nums(1:3))*3)
+         msd_func(i,3)=dot_product(vector3,vector3)/el_nums(3)
+         vector4 = pos_diff(sum(el_nums(1:3))*3+1:sum(el_nums(1:4))*3)
+         msd_func(i,4)=dot_product(vector4,vector4)/el_nums(4)
+         vector5 = pos_diff(sum(el_nums(1:4))*3+1:natoms*3)
+         msd_func(i,5)=dot_product(vector5,vector5)/el_nums(5)
+      end if
+ 
    end do
 !   write(*,*) natoms,el_nums(1),el_nums(2) 
 
@@ -507,6 +599,15 @@ if (calc_msd) then
       if (nelems .eq. 3) then
          write(17,*) times(i),msd_func(i,1),msd_func(i,2),msd_func(i,3)
       end if        
+      if (nelems .eq. 4) then
+         write(17,*) times(i),msd_func(i,1),msd_func(i,2),msd_func(i,3), &
+                           & msd_func(i,4)
+      end if
+      if (nelems .eq. 5) then
+         write(17,*) times(i),msd_func(i,1),msd_func(i,2),msd_func(i,3), &
+                           & msd_func(i,4),msd_func(i,5)
+      end if
+      
    end do
 
    close(17)
@@ -520,28 +621,13 @@ if (calc_msd) then
          diff(i)=msd_func(i,k)/(6.d0*times(i))
       end do
       diff = diff*(1E-10)**2/(1E-15)
-!   avg_hi= int((nframes-frames_skip)*0.7)
-!   avg_lo = int((nframes-frames_skip)*0.3)
-!   avg_diff = sum(diff(avg_lo:avg_hi))/(avg_hi-avg_lo)
       avg_diff=diff(nframes-frames_skip)
-      if (k .eq. 1) then
-         write(*,*) "calculated diffusion coefficient, element 1 (m^2/s):",avg_diff
-         open(unit=19,file="diff_const_MSD_el1.dat",status="replace")
-         write(19,*) avg_diff,"m^2/s"
-         close(19)
-      end if 
-      if (k .eq. 2) then
-         write(*,*) "calculated diffusion coefficient, element 2 (m^2/s):",avg_diff
-         open(unit=19,file="diff_const_MSD_el2.dat",status="replace")
-         write(19,*) avg_diff,"m^2/s"
-         close(19)
-      end if
-      if (k .eq. 3) then
-         write(*,*) "calculated diffusion coefficient, element 3 (m^2/s):",avg_diff
-         open(unit=19,file="diff_const_MSD_el3.dat",status="replace")
-         write(19,*) avg_diff,"m^2/s"
-         close(19)
-      end if
+
+      write(*,*) "calculated_diffusion coefficient, ",trim(el_names(k))," (m^2/s):",avg_diff
+      open(unit=19,file="diff_const_MSD_"//trim(el_names(k))//".dat",status="replace")
+      write(19,*) avg_diff,"m^2/s"
+      close(19)
+      
    end do
 
 
@@ -557,8 +643,10 @@ if (calc_vacf) then
 
    intervals=int(((nframes-frames_skip)*time_step)/corrt)
    frames_part=int(corrt/time_step)
-   write(*,*) "inter",intervals,frames_part
-
+   write(*,*)
+   write(*,*) "Number of intervals for VACF averaging: ",intervals
+   write(*,*) "Number of MD frames per interval: ",frames_part
+   write(*,*) "Calculate VACF from trajectory..."
    allocate(vel_first(natoms*3))
    allocate(vel_act(natoms*3))
    allocate(vacf_func(frames_part))
@@ -586,18 +674,29 @@ if (calc_vacf) then
    end do   
    close(18)
 
+   write(*,*) "Done! VACF written to vacf_plot.dat"
+   write(*,*)
+   write(*,*) "Perform Fourier transform for vibrational density of states..."
 !
 !    Now execute the discrete fourier transform to obtain the frequency spectrum
+!    Use zero-padding to increase the resolution in the frequency domain
 !
-   call rfft(vacf_func, frames_part)
+   allocate(vacf_pad(1*frames_part))
+   vacf_pad=0.d0
+   vacf_pad(1:frames_part)=vacf_func
+   call rfft(vacf_pad, frames_part*1)
 
    open(unit=18,file="VDOS.dat",status="replace")
-   do i=1,frames_part
-      write(18,*) i*33.356/(frames_part*time_step)*1000d0,vacf_func(i)
+   write(18,*) "# This VDOS has been calculated by analyze_bulk from utils4VASP."
+   write(18,*) "# Only frequencies up to 5000 cm^-1 are plotted."
+   write(18,*) "# Wave number (cm^-1)      intensity (a.u.)"
+   do i=1,frames_part*2
+      if ((i*33.356/(frames_part*time_step)*1000d0) .lt. 6000.d0) then
+         write(18,*) i*33.356/(frames_part*time_step)*1000d0,vacf_pad(i)
+      end if
    end do
    close(18)
-
-
+   write(*,*) "Done! VDOS written to tile VDOS.dat"
 end if        
 
 
@@ -613,7 +712,7 @@ if (calc_rdf) then
    all_tasks=((nelems**2-nelems)/2+nelems)*(nframes-frame_first)
    do l=1,nelems
       do m=l,nelems
-         do i=1,nframes
+         do i=frame_first,nframes
             if (npt_traj) then
                xlen=a_lens(i)
                ylen=b_lens(i)
@@ -694,24 +793,24 @@ if (calc_rdf) then
    end do
    write(*,*) " completed!"
    rdf_plot(1,:,:)=0.d0
-   open(unit=13,file="rdf.dat",status="replace")
-   write(13,'(a)',advance="no") "#      Distance (A)        "
+   call system("mkdir RDFs")
+   call chdir("RDFs")
    do i=1,nelems
       do j=1,nelems
-         write(13,'(a,a,a,a)',advance="no") trim(el_names(i)),"-",trim(el_names(j)),"       "
-      end do
-   end do
-   write(13,*)
-   do i=1,rdf_bins
-      write(13,'(f19.10)',advance="no") i*rdf_binsize
-      do j=1,nelems
-         do k=1,nelems
-            write(13,'(f19.10)',advance="no") rdf_plot(i,j,k)
+         open(unit=13,file="RDF_"//trim(el_names(i))//"-"//trim(el_names(j))//".dat", &
+                       & status="replace")
+         write(13,'(a,a,a,a,a)') "#      Distance (A)        RDF ("&
+                       &//trim(el_names(i))//"-"//trim(el_names(j))//") "      
+         do k=1,rdf_bins
+            if (j .lt. i) then
+               write(13,'(2f19.10)') k*rdf_binsize,rdf_plot(k,j,i)
+            else
+               write(13,'(2f19.10)') k*rdf_binsize,rdf_plot(k,i,j) 
+            end if    
          end do
       end do
-      write(13,*)
-   end do
-   close(13)
+   end do   
+   call chdir("..")
 
  !  open(unit=14,file="nearest.dat",status="replace")
  !  do i=1,rdf_bins
@@ -719,10 +818,177 @@ if (calc_rdf) then
  !  end do
  !  close(14)
 
-   write(*,*) "RDF plot written to 'rdf.dat'."
+   write(*,*) "RDF plot written to files in folder RDFs."
    write(*,*)
 end if
 
+!
+!     Calculate the averaged spatially resolved element densities and store
+!     them in a Gaussian cube file
+!
+if (dens_cube) then
+   write(*,*) "Calculate the spatially resolved element densities!"
+!
+!     Determine number grid points per dimension
+!
+   gridx=100
+   gridy=100
+   gridz=100
+   allocate(dens_3d(nelems,gridx,gridy,gridz))
+   dens_3d=0.d0
+
+!
+!    Convert back to direct coordinates 
+!
+   if (.not. npt_traj) then
+      do i=1,nframes
+         do j=1,natoms
+            xyz(1,j,i) = xyz(1,j,i)/a_len
+            xyz(2,j,i) = xyz(2,j,i)/b_len
+            xyz(3,j,i) = xyz(3,j,i)/c_len
+         end do
+      end do
+   else
+      do i=1,nframes
+         do j=1,natoms
+            xyz(1,j,i) = xyz(1,j,i)/a_lens(i)
+            xyz(2,j,i) = xyz(2,j,i)/b_lens(i)
+            xyz(3,j,i) = xyz(3,j,i)/c_lens(i)
+         end do
+      end do
+   end if
+   
+!
+!     Remove corrections of box images, project all atoms into central unit cell
+!
+   do i=1,nframes
+      do j=1,natoms
+!
+!     Correct the x component
+!
+         do while(xyz(1,j,i) .gt. 1.d0)
+            xyz(1,j,i)=xyz(1,j,i)-1.d0 
+         end do
+         do while(xyz(1,j,i) .lt. 0.d0)
+            xyz(1,j,i)=xyz(1,j,i)+1.d0
+         end do
+!
+!     Correct the y component
+!
+         do while(xyz(2,j,i) .gt. 1.d0)
+            xyz(2,j,i)=xyz(2,j,i)-1.d0 
+         end do
+         do while(xyz(2,j,i) .lt. 0.d0)
+            xyz(2,j,i)=xyz(2,j,i)+1.d0
+         end do
+!
+!     Correct the z component
+!
+         do while(xyz(3,j,i) .gt. 1.d0)
+            xyz(3,j,i)=xyz(3,j,i)-1.d0 
+         end do
+         do while(xyz(3,j,i) .lt. 0.d0)
+            xyz(3,j,i)=xyz(3,j,i)+1.d0
+         end do
+      end do
+   end do
+!
+!     Now assign all atoms in each frame to one of the 3D bins
+!
+   do i=frame_first,nframes
+      inc=0
+      do j=1,nelems
+         do k=1,el_nums(j)
+            inc=inc+1
+            gridx_act=ceiling(xyz(1,inc,i)*gridx)
+            gridy_act=ceiling(xyz(2,inc,i)*gridy)
+            gridz_act=ceiling(xyz(3,inc,i)*gridz)-1
+            do i1=-stepx,stepx
+               do j1=-stepy,stepy
+                  do k1=-stepz,stepz
+                     distance=i1**2+j1**2+k1**2
+                     i_new=gridx_act+i1
+                     if (i_new .gt. gridx) then
+                        i_new=i_new-gridx
+                     else if (i_new .lt. 1) then
+                        i_new=i_new+gridx
+                     end if
+                     j_new=gridy_act+j1
+                     if (j_new .gt. gridy) then
+                        j_new=j_new-gridy 
+                     else if (j_new .lt. 1) then
+                        j_new=j_new+gridy
+                     end if
+                     k_new=gridz_act+k1
+                     if (k_new .gt. gridz) then
+                        k_new=k_new-gridz
+                     else if (k_new .lt. 1) then
+                        k_new=k_new+gridz
+                     end if
+                     
+                     dens_3d(j,i_new,j_new,k_new)= &
+                             & dens_3d(j,i_new,j_new,k_new)+exp(-(distance)/2.d0)                     
+                  end do 
+               end do     
+            end do       
+         end do
+      end do      
+   end do
+!
+!     Write the header of the cube file
+!
+   do i=1,nelems
+      write(cube_name,'(a,a,a)') "density_",trim(el_names(i)),".cube"
+      write(*,*) "Write density of ",trim(el_names(i))," to file ",cube_name
+      open(unit=45,file=cube_name,status="replace")
+      write(45,'(a)') "utils4VASP CUBE FILE"
+      write(45,'(a,a)') "Contains spatially resolved density of element:",el_names(i)
+      write(45,*) natoms,0d0,0.d0,0d0
+      if (.not. npt_traj) then
+         write(45,*) gridx,a_len/gridx*a2bohr,0.d0,0.d0
+         write(45,*) gridy,0.d0,b_len/gridy*a2bohr,0.d0
+         write(45,*) gridz,0.d0,0.d0,c_len/gridz*a2bohr
+      else
+         write(45,*) gridx,a_lens(1)/gridx*a2bohr,0.d0,0.d0
+         write(45,*) gridy,0.d0,b_lens(1)/gridy*a2bohr,0.d0
+         write(45,*) gridz,0.d0,0.d0,c_lens(1)/gridz*a2bohr
+      end if              
+      inc=0
+      do j=1,nelems
+         do k=1,el_nums(j)
+            inc=inc+1
+            call elem(el_names(j),elnumber)
+            if (.not. npt_traj) then
+               write(45,*) elnumber,real(elnumber),xyz(1,inc,nframes)*a_len*a2bohr,xyz(2,inc,nframes)* &
+                              & b_len*a2bohr,xyz(3,inc,nframes)*c_len*a2bohr
+            else 
+               write(45,*) elnumber,real(elnumber),xyz(1,inc,nframes)*a_lens(1)*a2bohr,xyz(2,inc,nframes)* &
+                              & b_lens(1)*a2bohr,xyz(3,inc,nframes)*c_lens(1)*a2bohr
+            end if             
+         end do
+      end do     
+      write(45,*) 1,48 
+!
+!    Write the volumetric data in the cube file
+!
+      do j=1,gridx
+         do k=1,gridy
+            do l=1,gridz
+               write(45,'(f20.10)',advance="no") dens_3d(i,j,k,l)
+               if (modulo(l,6) .eq. 5) then
+                  write(45,*) " "      
+               end if
+            end do
+            write(45,*) " "
+         end do    
+      end do
+      close(45)   
+   end do
+end if        
+
+
+write(*,*) "analyze_bulk exited normally ..."
+write(*,*)
 
 end program analyze_bulk 
 
@@ -761,4 +1027,58 @@ x = factor * real(aout(1:N))
 
 return
 end subroutine rfft
+
+
+!
+!     subroutine elem: read in character with element symbol and
+!       give out the number
+!
+!     part of QMDFF
+!
+subroutine elem(key1, nat)
+IMPLICIT DOUBLE PRECISION (A-H,O-Z)
+CHARACTER(len=*)::KEY1
+CHARACTER(len=2)::ELEMNT(107),E
+
+DATA ELEMNT/'h ','he', &
+ & 'li','be','b ','c ','n ','o ','f ','ne', &
+ & 'na','mg','al','si','p ','s ','cl','ar', &
+ & 'k ','ca','sc','ti','v ','cr','mn','fe','co','ni','cu', &
+ & 'zn','ga','ge','as','se','br','kr', &
+ & 'rb','sr','y ','zr','nb','mo','tc','ru','rh','pd','ag', &
+ & 'cd','in','sn','sb','te','i ','xe', &
+ & 'cs','ba','la','ce','pr','nd','pm','sm','eu','gd','tb','dy', &
+ & 'ho','er','tm','yb','lu','hf','ta','w ','re','os','ir','pt', &
+ & 'au','hg','tl','pb','bi','po','at','rn', &
+ & 'fr','ra','ac','th','pa','u ','np','pu','am','cm','bk','cf','xx', &
+ & 'fm','md','cb','xx','xx','xx','xx','xx'/
+
+nat=0
+e='  '
+do i=1,len(key1)
+   if (key1(i:i).ne.' ') L=i
+end do
+k=1
+DO J=1,L
+   if (k.gt.2) exit
+   N=ICHAR(key1(J:J))
+   if (n.ge.ichar('A') .and. n.le.ichar('Z') ) then
+      e(k:k)=char(n+ICHAR('a')-ICHAR('A'))
+      k=k+1
+   end if
+   if (n.ge.ichar('a') .and. n.le.ichar('z') ) then
+      e(k:k)=key1(j:j)
+      k=k+1
+   end if
+end do
+
+DO I=1,107
+   if (e.eq.elemnt(i)) then
+      NAT=I
+      RETURN
+   END IF
+END DO
+
+return
+end subroutine elem
 

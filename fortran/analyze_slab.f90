@@ -610,6 +610,11 @@ else
       goto 33
    end if
 
+   if (npt_format) then
+      close(14)
+      open(unit=14,file="XDATCAR",status="old")
+   end if        
+
    allocate(xyz(3,natoms,nframes))
 !
 !    Read in the coordinates of the frames and correct for image flags

@@ -30,6 +30,7 @@ character(len=150),allocatable::xdat_content(:)
 integer::readstat
 integer::xdat_lines
 integer::nfolders,nelems,natoms,nstrucs,nframes
+real(kind=8)::stress(3,3)
 integer::el_nums(10)
 logical::write_aenet,write_mace
 character(len=2)::el_syms(10)
@@ -520,6 +521,7 @@ if (md_mode .eq. "setup") then
    open(unit=45,file="xdat_length",status="old")
    read(45,*) xdat_lines
    close(45)
+   close(56)
    open(unit=56,file="XDATCAR",status="old")
    do i=1,6
       read(56,*)
@@ -592,7 +594,195 @@ if (md_mode .eq. "setup") then
    write(*,*) " Modify and use script copy_input.sh to start calculations."
    write(*,*)
 end if
+!
+!    If the prepared calculations of all frames are finished, read in the 
+!    results and generate the training set files 
+!
+if (md_mode .eq. "eval") then
+!
+!    First, determine the number of frames
+!
+   i=1
+   do
+      if (i .lt. 10) then
+         write(foldername,'(a,i1)') "frame",i
+      else if (i .lt. 100) then
+         write(foldername,'(a,i2)') "frame",i
+      else if (i .lt. 1000) then
+         write(foldername,'(a,i3)') "frame",i
+      else
+         write(foldername,'(a,i4)') "frame",i
+      end if
+ 
+      call chdir(trim(foldername),readstat)
+      if (readstat .eq. 0) then
+         call chdir("..")
+         i=i+1
+      else
+         nframes=i-1
+         exit
+      end if        
+   end do  
+   write(*,*) 
+   write(*,*) "Number of calculated frames: ",nframes
 
+   write(*,*)
+   write(*,*) "Read in all OUTCAR files and write training set file(s) ..."
+!
+!    Now, read in the OUTCAR files of all frames 
+!
+   do i=1,nframes
+      if (i .lt. 10) then
+         write(foldername,'(a,i1)') "frame",i
+      else if (i .lt. 100) then
+         write(foldername,'(a,i2)') "frame",i
+      else if (i .lt. 1000) then
+         write(foldername,'(a,i3)') "frame",i
+      else
+         write(foldername,'(a,i4)') "frame",i
+      end if
+      call chdir(trim(foldername))
+      open(unit=78,file="OUTCAR",status="old",iostat=readstat)
+      if (readstat .ne. 0) then
+         write(*,*) "The OUTCAR file for frame ",i," could not been found!"
+         stop
+      end if
+      natoms=0
+      el_nums=0
+      inc3=1
+      do  
+         read(78,'(a)',iostat=readstat) a160
+         if (readstat .ne. 0) exit
+
+         if (index(a160,"ions per type =") .ne. 0) then
+            read(a160,*,iostat=readstat) a80,a80,a80,a80,el_nums
+            do j=1,10
+               if (el_nums(j) .ne. 0) then
+                  nelems=j
+               end if
+            end do
+            natoms=sum(el_nums(1:nelems))
+            if (allocated(xyz)) deallocate(xyz)
+            allocate(xyz(3,natoms))
+            if (allocated(grad)) deallocate(grad)
+            allocate(grad(3,natoms))
+            if (allocated(at_names)) deallocate(at_names)
+            allocate(at_names(natoms))
+!
+!     Determine element symbols for all atoms
+!        
+            at_names="XX"
+            inc2=1
+            do j=1,nelems
+               do k=1,el_nums(j)
+                  at_names(inc2)=el_syms(j)
+                  inc2=inc2+1
+               end do
+            end do
+         end if
+
+         if (index(a160,"TITEL") .ne. 0) then
+            read(a160,*) a80,a80,a80,el_syms(inc3)
+            inc3=inc3+1
+         end if
+
+         if (index(a160,"energy  without entropy=") .ne. 0) then
+            read(a160,*) a80,a80,a80,a80,a80,a80,energy
+         end if        
+
+       !  if (index(a160,"FORCE on cell =-STRESS in cart") .ne. 0) then
+       !     do j=1,13
+       !        read(78,*)
+       !     end do     
+       !     read(78,*) stress(1,1),stress(2,2),stress(3,3),stress(1,2),stress(2,3),stress(1,3)
+       !     stress(2,1)=stress(1,2)
+       !     stress(3,2)=stress(2,3)
+       !     stress(3,1)=stress(1,3)
+       !  end if
+
+
+         if (index(a160,"POSITION") .ne. 0) then
+            read(78,*)
+
+            do j=1,natoms
+               read(78,*) xyz(:,j),grad(:,j)
+            end do
+         end if
+
+         if(index(a160,'VOLUME and BASIS-vectors').ne.0)then
+            read(78,*)
+            read(78,*)
+            read(78,*)
+            read(78,*)
+            read(78,*) cell_vecs(1,:)
+            read(78,*) cell_vecs(2,:)
+            read(78,*) cell_vecs(3,:)
+         end if
+  
+      end do
+      if (natoms .lt. 1) then
+         write(*,*) "Something seems to be wrong with the OUTCAR file of frame ",i
+         stop
+      end if        
+      close(78)
+
+      call chdir("..")
+!
+!     Write output for current frame (aenet)
+!
+      if (write_aenet) then
+         if (i .lt. 10) then
+            write(out_name,'(a,a,i1)') trim(basename),"_frame",i
+         else if (i .lt. 100) then
+            write(out_name,'(a,a,i2)') trim(basename),"_frame",i
+         else if (i .lt. 1000) then
+            write(out_name,'(a,a,i3)') trim(basename),"_frame",i
+         else 
+            write(out_name,'(a,a,i4)') trim(basename),"_frame",i
+         end if   
+         open(unit=30,file="xsf_files/" // trim(out_name) // ".xsf")
+         write(30,'(a,f14.8,a)') "# total energy = ",energy," eV"
+         write(30,*)
+         write(30,'(a)') "CRYSTAL"
+         write(30,'(a)') "PRIMVEC"
+         do j=1,3
+            write(30,'(3f14.8)') cell_vecs(j,:)
+         end do
+         write(30,'(a)') "PRIMCOORD"
+         write(30,'(i6,i1)') natoms,1
+         do j=1,natoms
+            write(30,'(a,a,6f14.8)') at_names(j)," ",xyz(:,j),grad(:,j)
+         end do
+
+         close(30)
+!
+!     Write name of output file to list of filenames
+!
+         write(45,'(a,a,a)') "./xsf_files/", trim(out_name),".xsf"
+      end if
+
+!
+!     Write output for current frame (MACE)
+!
+      if (write_mace) then
+         write(48,*) natoms
+  !       write(48,'(a,9f13.8,a,9f13.8,a,a,f20.10,a)') 'REF_stress="',stress(1,:),stress(2,:),&
+  !               & stress(3,:),'" Lattice="',cell_vecs(1,:),cell_vecs(2,:),&
+  !               & cell_vecs(3,:),'" Properties=species:S:1:pos:R:3:molID:I:1:REF_forces:R:3',&
+  !               & ' Nmols=1 REF_energy=',energy,' pbc="T T T"'
+         write(48,'(a,9f13.8,a,a,f20.10,a)') ' Lattice="',cell_vecs(1,:),cell_vecs(2,:),&
+                 & cell_vecs(3,:),'" Properties=species:S:1:pos:R:3:molID:I:1:REF_forces:R:3',&
+                 & ' Nmols=1 REF_energy=',energy,' pbc="T T T"'
+
+         do j=1,natoms
+            write(48,'(a,a,3f14.8,a,3f14.8)') at_names(j),"  ",xyz(:,j),"  0  ",grad(:,j)
+         end do
+      end if
+   end do
+   write(*,*) "... completed!"
+
+
+end if        
 
 if (md_mode .ne. "setup") then
    if (write_aenet) then

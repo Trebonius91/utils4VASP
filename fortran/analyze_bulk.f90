@@ -797,6 +797,9 @@ if (calc_rdf) then
    call chdir("RDFs")
    do i=1,nelems
       do j=1,nelems
+!
+!    Write the RDF for the current element combination
+!
          open(unit=13,file="RDF_"//trim(el_names(i))//"-"//trim(el_names(j))//".dat", &
                        & status="replace")
          write(13,'(a,a,a,a,a)') "#      Distance (A)        RDF ("&
@@ -808,6 +811,22 @@ if (calc_rdf) then
                write(13,'(2f19.10)') k*rdf_binsize,rdf_plot(k,i,j) 
             end if    
          end do
+!
+!    Write the integrated RDF (i.e., the number of surrounding atoms) for the 
+!    current element combination)
+!
+         open(unit=13,file="RDF_int_"//trim(el_names(i))//"-"//trim(el_names(j))//".dat", &
+                       & status="replace")
+         write(13,'(a,a,a,a,a)') "#      Distance (A)       integrated RDF ("&
+                       &//trim(el_names(i))//"-"//trim(el_names(j))//") "
+         do k=1,rdf_bins
+            if (j .lt. i) then
+               write(13,'(2f19.10)') k*rdf_binsize,sum(rdf_plot(1:k,j,i))*rdf_binsize
+            else
+               write(13,'(2f19.10)') k*rdf_binsize,sum(rdf_plot(1:k,i,j))*rdf_binsize
+            end if
+         end do
+
       end do
    end do   
    call chdir("..")

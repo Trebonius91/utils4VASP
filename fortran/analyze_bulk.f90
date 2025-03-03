@@ -54,6 +54,7 @@ real(kind=8),allocatable::vector4(:),vector5(:)
 real(kind=8)::vacf_int,norm_factor
 character(len=2),allocatable::el_names(:)
 real(kind=8),allocatable::rdf_plot(:,:,:)
+real(kind=8),allocatable::rdf_sum(:,:,:)
 real(kind=8)::pos1(3),pos2(3)
 integer::avg_lo,avg_hi
 real(kind=8)::avg_diff
@@ -704,6 +705,7 @@ if (calc_rdf) then
            write(*,*) "Calculate the RDFs of all element combinations..."
    eval_stat=.false.
    allocate(rdf_plot(rdf_bins,nelems,nelems))
+   allocate(rdf_sum(rdf_bins,nelems,nelems))
    rdf_plot=0.d0
    task_act=0
    xlen=a_len
@@ -775,6 +777,7 @@ if (calc_rdf) then
                   ig = int(dist/rdf_binsize)
                   if ((ig .le. rdf_bins) .and. (ig .ge. 1)) then
                      rdf_plot(ig,l,m) = rdf_plot(ig,l,m) + 2.d0
+                     rdf_sum(ig,l,m)=rdf_sum(ig,l,m)+ 1.d0
                   end if
                end do
             end do
@@ -788,6 +791,9 @@ if (calc_rdf) then
             rho=1.d0/(abs(volume))
             nid=4.d0/3.d0*pi*vb*rho*2d0
             rdf_plot(j,l,m)=rdf_plot(j,l,m)/(ngr*npart1*npart2*nid)
+            rdf_plot(j,m,l)=rdf_plot(j,l,m)
+            rdf_sum(j,l,m)=rdf_sum(j,l,m)/ngr
+            rdf_sum(j,m,l)=rdf_sum(j,l,m)            
          end do
       end do
    end do
@@ -805,11 +811,7 @@ if (calc_rdf) then
          write(13,'(a,a,a,a,a)') "#      Distance (A)        RDF ("&
                        &//trim(el_names(i))//"-"//trim(el_names(j))//") "      
          do k=1,rdf_bins
-            if (j .lt. i) then
-               write(13,'(2f19.10)') k*rdf_binsize,rdf_plot(k,j,i)
-            else
-               write(13,'(2f19.10)') k*rdf_binsize,rdf_plot(k,i,j) 
-            end if    
+            write(13,'(2f19.10)') k*rdf_binsize,rdf_plot(k,i,j)
          end do
 !
 !    Write the integrated RDF (i.e., the number of surrounding atoms) for the 
@@ -819,12 +821,9 @@ if (calc_rdf) then
                        & status="replace")
          write(13,'(a,a,a,a,a)') "#      Distance (A)       integrated RDF ("&
                        &//trim(el_names(i))//"-"//trim(el_names(j))//") "
+         
          do k=1,rdf_bins
-            if (j .lt. i) then
-               write(13,'(2f19.10)') k*rdf_binsize,sum(rdf_plot(1:k,j,i))*rdf_binsize
-            else
-               write(13,'(2f19.10)') k*rdf_binsize,sum(rdf_plot(1:k,i,j))*rdf_binsize
-            end if
+            write(13,'(2f19.10)') k*rdf_binsize,sum(rdf_sum(1:k,i,j))/el_nums(i)
          end do
 
       end do
@@ -837,7 +836,9 @@ if (calc_rdf) then
  !  end do
  !  close(14)
 
-   write(*,*) "RDF plot written to files in folder RDFs."
+   write(*,*) "RDF plots written to files in folder RDFs."
+   write(*,*) "Summed up numbers of surrounding atoms written to "
+   write(*,*) "   RDF_int files in folder RDFs."
    write(*,*)
 end if
 

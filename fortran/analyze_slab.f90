@@ -711,7 +711,7 @@ else
 !
 !     Apply the z-shift if defined
 !
-   do i=1,nframes-1
+   do i=1,nframes
       do j=1,natoms
          xyz(3,j,i)=xyz(3,j,i)+z_shift*zlen
       end do

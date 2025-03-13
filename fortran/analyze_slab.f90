@@ -708,6 +708,15 @@ else
          end do
       end do
    end do
+!
+!     Apply the z-shift if defined
+!
+   do i=1,nframes-1
+      do j=1,natoms
+         xyz(3,j,i)=xyz(3,j,i)+z_shift*zlen
+      end do
+   end do
+
    write(*,*) " completed!"
    close(14)
 end if

@@ -19,6 +19,7 @@ end module fftw_mod
 
 
 program analyze_bulk
+use fftw_mod
 implicit none
 integer::i,j,k,l,m
 integer::readstat
@@ -47,6 +48,7 @@ real(kind=8)::msd_act,volume
 real(kind=8),allocatable::pos_diff(:)
 real(kind=8),allocatable::z_axis(:)
 real(kind=8),allocatable::msd_func(:,:),vacf_func(:),vacf_pad(:)
+real(kind=8),allocatable::fourier_out(:)
 real(kind=8),allocatable::vel_first(:),vel_act(:)
 real(kind=8),allocatable::times(:),diff(:)
 real(kind=8),allocatable::vector1(:),vector2(:),vector3(:)
@@ -683,8 +685,11 @@ if (calc_vacf) then
 !    Use zero-padding to increase the resolution in the frequency domain
 !
    allocate(vacf_pad(1*frames_part))
+   allocate(fourier_out(1*frames_part))
    vacf_pad=0.d0
    vacf_pad(1:frames_part)=vacf_func
+!   call dfftw_plan_dft_r2c_1d(plan,frames_part*1,vacf_pad,fourier_out,FFTW_ESTIMATE)
+!   call dfftw_execute_dft_r2c(plan, vacf_pad,fourier_out)
    call rfft(vacf_pad, frames_part*1)
 
    open(unit=18,file="VDOS.dat",status="replace")
@@ -693,7 +698,7 @@ if (calc_vacf) then
    write(18,*) "# Wave number (cm^-1)      intensity (a.u.)"
    do i=1,frames_part*2
       if ((i*33.356/(frames_part*time_step)*1000d0) .lt. 6000.d0) then
-         write(18,*) i*33.356/(frames_part*time_step)*1000d0,vacf_pad(i)
+         write(18,*) i*33.356/(frames_part*time_step)*1000d0,sqrt(vacf_pad(i)*vacf_pad(i))
       end if
    end do
    close(18)

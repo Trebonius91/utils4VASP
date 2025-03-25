@@ -68,7 +68,12 @@ logical::eval_stat(10)
 real(kind=8)::box_volume
 real(kind=8)::dist,pi,rdf_cutoff
 real(kind=8)::xlen,ylen,zlen
+real(kind=8)::int_act
+real(kind=8),allocatable::vacf_plot(:)
 integer::frame_first,intervals,frames_part
+integer::i_max
+integer::vib_inter
+real(kind=8)::vib_width
 !  RDF calculation
 integer::ig,ngr,npart1,npart2
 real(kind=8)::nid,r_act,rho,vb
@@ -93,6 +98,10 @@ write(*,*) "        is calculated from the VACF"
 write(*,*) "-dt=[time step in fs]: The time step used for MD simulation, in fs."
 write(*,*) "-corrt=[time in fs]: Length of the VACF correlation interval to be calculated."
 write(*,*) "       (default: 1000 fs)"
+write(*,*) "-vib_inter=[number]: The interval in which the IR spectrum is plotted (upper limit)"
+write(*,*) "       (default: 6000 cm^-1)"
+write(*,*) "-vib_width=[value]: The Gaussian broadening of the VACF IR spectrum. "
+write(*,*) "       (default: 0.001, larger value gives less broadening)"
 write(*,*) "-readtime: The time of each XDATCAR (in s) will be read in from file 'times.dat'"
 write(*,*) "    useful for the evaluation of kinetic Monte Carlo simulations."
 write(*,*) "-skip=[steps to skip]: If the first N steps shall be skipped (equilibration.)"
@@ -218,6 +227,26 @@ do i = 1, command_argument_count()
       write(*,*) "The VACF correlation time is ",corrt," fs."
    end if
 end do
+
+vib_inter = 6000
+do i = 1, command_argument_count()
+   call get_command_argument(i, arg)
+   if (trim(arg(1:11))  .eq. "-vib_inter=") then
+      read(arg(12:32),*) vib_inter
+      write(*,*) "The IR plot interval is up to ",vib_inter, " cm^-1."
+   end if
+end do
+
+vib_width = 0.001
+do i = 1, command_argument_count()
+   call get_command_argument(i, arg)
+   if (trim(arg(1:11))  .eq. "-vib_width=") then
+      read(arg(12:32),*) vib_width
+      write(*,*) "The IR Gaussian line broadening prefactor is ",vib_width
+   end if
+end do
+
+
 
 
 
@@ -692,14 +721,33 @@ if (calc_vacf) then
 !   call dfftw_execute_dft_r2c(plan, vacf_pad,fourier_out)
    call rfft(vacf_pad, frames_part*1)
 
+!
+!    Generate a smoothened plot of the VDOS
+!    Perform Gaussian broadening of all FFT peaks 
+!
+   allocate(vacf_plot(vib_inter))
+   i_max=int(6.0/33.356*frames_part*time_step)
+   do i=1,vib_inter
+      int_act=0.d0
+      do j=1,i_max
+         int_act=int_act+sqrt(vacf_pad(j)*vacf_pad(j))*exp(-vib_width*(real(i)-(j*&
+                          & 33.356/(frames_part*time_step)*1000d0))**2)
+      end do
+      vacf_plot(i)=int_act
+   end do
+
+
    open(unit=18,file="VDOS.dat",status="replace")
    write(18,*) "# This VDOS has been calculated by analyze_bulk from utils4VASP."
-   write(18,*) "# Only frequencies up to 5000 cm^-1 are plotted."
+   write(18,*) "# Only frequencies up to ",vib_inter," cm^-1 are plotted."
    write(18,*) "# Wave number (cm^-1)      intensity (a.u.)"
-   do i=1,frames_part*2
-      if ((i*33.356/(frames_part*time_step)*1000d0) .lt. 6000.d0) then
-         write(18,*) i*33.356/(frames_part*time_step)*1000d0,sqrt(vacf_pad(i)*vacf_pad(i))
-      end if
+!   do i=1,frames_part*2
+!      if ((i*33.356/(frames_part*time_step)*1000d0) .lt. 6000.d0) then
+!         write(18,*) i*33.356/(frames_part*time_step)*1000d0,sqrt(vacf_pad(i)*vacf_pad(i))
+!      end if
+!   end do
+   do i=1,vib_inter
+      write(18,*) real(i),vacf_plot(i)
    end do
    close(18)
    write(*,*) "Done! VDOS written to tile VDOS.dat"

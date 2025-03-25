@@ -8,6 +8,15 @@
 !    Part of VASP4CLINT
 !     Julien Steffen, 2023 (julien.steffen@fau.de)
 !
+module fftw_mod
+   use,intrinsic :: iso_c_binding
+   include 'fftw3.f03'
+
+   integer::Np
+   integer, parameter :: Nmax = 1024
+   type(C_PTR) :: plan
+   real(kind=8)::factor
+end module fftw_mod
 
 program analyze_slab
 implicit none
@@ -1430,6 +1439,96 @@ if (calc_diff) then
    write(*,*) "Diffusion coefficient calculation finished!"
    write(*,*) "Coefficients written to diff_const_MSD_el*.dat"
 end if        
+
+
+!
+!    Calculate the vibrational density of states from the velocity autocorrelation
+!     function (VACF)
+!
+!   Number of intervals for which VACF is calculated
+!
+if (calc_vacf) then
+
+   intervals=int(((nframes-frame_first)*time_step)/corrt)
+   frames_part=int(corrt/time_step)
+   write(*,*)
+   write(*,*) "Number of intervals for VACF averaging: ",intervals
+   write(*,*) "Number of MD frames per interval: ",frames_part
+   write(*,*) "Calculate VACF from trajectory..."
+   allocate(vel_first(natoms*3))
+   allocate(vel_act(natoms*3))
+   allocate(vacf_func(frames_part))
+   vacf_func=0.d0
+   do l=1,intervals
+      do i=1,natoms
+         do k=1,3
+            vel_first((i-1)*3+k)=(xyz(k,i,2+(l-1)*intervals)-xyz(k,i,1+(l-1)*intervals))/time_step
+         end do
+      end do
+      do i=1,frames_part-1
+         do j=1,natoms
+            do k=1,3
+               vel_act((j-1)*3+k)=(xyz(k,j,i+1+(l-1)*intervals)-xyz(k,j,i+(l-1)*intervals))/time_step
+            end do
+         end do
+         vacf_func(i)=vacf_func(i)+dot_product(vel_first,vel_act)/natoms/3.d0
+      end do
+   end do
+
+
+   vacf_func=vacf_func/vacf_func(1)
+   open(unit=18,file="vacf_plot.dat",status="replace")
+   do i=1,frames_part
+      write(18,*) (i-1)*time_step, vacf_func(i)
+   end do
+   close(18)
+
+   write(*,*) "Done! VACF written to vacf_plot.dat"
+   write(*,*)
+   write(*,*) "Perform Fourier transform for vibrational density of states..."
+!
+!    Now execute the discrete fourier transform to obtain the frequency spectrum
+!    Use zero-padding to increase the resolution in the frequency domain
+!
+   allocate(vacf_pad(1*frames_part))
+   allocate(fourier_out(1*frames_part))
+   vacf_pad=0.d0
+   vacf_pad(1:frames_part)=vacf_func
+!   call dfftw_plan_dft_r2c_1d(plan,frames_part*1,vacf_pad,fourier_out,FFTW_ESTIMATE)
+!   call dfftw_execute_dft_r2c(plan, vacf_pad,fourier_out)
+   call rfft(vacf_pad, frames_part*1)
+!
+!    Generate a smoothened plot of the VDOS
+!    Perform Gaussian broadening of all FFT peaks 
+!
+   allocate(vacf_plot(vib_inter))
+   i_max=int(6.0/33.356*frames_part*time_step)
+   do i=1,vib_inter
+      int_act=0.d0
+      do j=1,i_max
+         int_act=int_act+sqrt(vacf_pad(j)*vacf_pad(j))*exp(-vib_width*(real(i)-(j*&
+                          & 33.356/(frames_part*time_step)*1000d0))**2)
+      end do
+      vacf_plot(i)=int_act
+   end do
+
+
+   open(unit=18,file="VDOS.dat",status="replace")
+   write(18,*) "# This VDOS has been calculated by analyze_bulk from utils4VASP."
+   write(18,*) "# Only frequencies up to ",vib_inter," cm^-1 are plotted."
+   write(18,*) "# Wave number (cm^-1)      intensity (a.u.)"
+!   do i=1,frames_part*2
+!      if ((i*33.356/(frames_part*time_step)*1000d0) .lt. 6000.d0) then
+!         write(18,*) i*33.356/(frames_part*time_step)*1000d0,sqrt(vacf_pad(i)*vacf_pad(i))
+!      end if
+!   end do
+   do i=1,vib_inter
+      write(18,*) real(i),vacf_plot(i)
+   end do
+   close(18)
+   write(*,*) "Done! VDOS written to tile VDOS.dat"
+end if
+
 
 !
 !     Additionally, write POSCAR files for Core Level energy calculations 

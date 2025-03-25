@@ -79,6 +79,20 @@ real(kind=8),allocatable::vector1(:),vector2(:),vector3(:),pos_diff(:)
 real(kind=8),allocatable::diff(:),times(:),msd_func(:,:)
 real(kind=8)::avg_diff,time_step
 real(kind=8)::box_volume
+!  VDOS calculation
+real(kind=8),allocatable::vel_first(:),vel_act(:)
+real(kind=8),allocatable::vacf_func(:),vacf_pad(:)
+real(kind=8),allocatable::fourier_out(:)
+logical::calc_vacf
+real(kind=8)::corrt
+real(kind=8)::int_act
+integer::intervals
+integer::frames_part
+real(kind=8),allocatable::vacf_plot(:)
+integer::vib_inter
+real(kind=8)::vib_width
+integer::i_max
+
 !  Time and accounting
 integer::task_act,all_tasks
 
@@ -121,6 +135,15 @@ write(*,*) "     the atom for which CLS shall be calculated is located (near for
 write(*,*) "     surface of the slab (default: 100)."
 write(*,*) " -cls_rounds=[number]: In how many parts the trajectory shall be divided for"
 write(*,*) "     CLS template generation in each part (default: 1)."
+write(*,*) " -vib_dens:  the vibrational density of states (IR spectrum without intensities)"
+write(*,*) "        is calculated from the VACF"
+write(*,*) " -dt=[time step in fs]: The time step used for MD simulation, in fs."
+write(*,*) " -corrt=[time in fs]: Length of the VACF correlation interval to be calculated."
+write(*,*) "       (default: 1000 fs)"
+write(*,*) " -vib_inter=[number]: The interval in which the IR spectrum is plotted (upper limit)"
+write(*,*) "       (default: 6000 cm^-1)"
+write(*,*) " -vib_width=[value]: The Gaussian broadening of the VACF IR spectrum. "
+write(*,*) "       (default: 0.001, larger value gives less broadening)"
 write(*,*) " -tension : calculates the surface tension averaged over all MD frames."
 write(*,*) "     For this, the OUTCAR file needs to be present (MD with ISIF=2)"
 write(*,*) " -diffusion : calculates the diffusion coefficient, for each element in the slab"
@@ -226,12 +249,52 @@ end do
 
 rdf_binsize = rdf_range/rdf_bins
 
+!
+!    For vibrational density of states calculation
+!
+
+calc_vacf = .false.
+do i = 1, command_argument_count()
+   call get_command_argument(i, arg)
+   if (trim(arg)  .eq. "-vib_dens") then
+      calc_vacf = .true.
+      write(*,*) "The vibrational density of states will be calculated!"
+   end if
+end do
+
+corrt = 1000
+do i = 1, command_argument_count()
+   call get_command_argument(i, arg)
+   if (trim(arg(1:7))  .eq. "-corrt=") then
+      read(arg(8:32),*) corrt
+      write(*,*) "The VACF correlation time is ",corrt," fs."
+   end if
+end do
+
+vib_inter = 6000
+do i = 1, command_argument_count()
+   call get_command_argument(i, arg)
+   if (trim(arg(1:11))  .eq. "-vib_inter=") then
+      read(arg(12:32),*) vib_inter
+      write(*,*) "The IR plot interval is up to ",vib_inter, " cm^-1."
+   end if
+end do
+
+vib_width = 0.001
+do i = 1, command_argument_count()
+   call get_command_argument(i, arg)
+   if (trim(arg(1:11))  .eq. "-vib_width=") then
+      read(arg(12:32),*) vib_width
+      write(*,*) "The IR Gaussian line broadening prefactor is ",vib_width
+   end if
+end do
+
+
 
 pi=3.141592653589793238
 !    
 !    For (optional) diffusion coefficient calculation
 ! 
-time_step=0.d0
 !
 !    If the evaluation shall start not at the first frame but after 
 !     an equilibration phase
@@ -328,7 +391,7 @@ do i = 1, command_argument_count()
 end do
 
 !
-!    Activates the calclation of two-dimensional diffusion coefficients
+!    Activates the calculation of two-dimensional diffusion coefficients
 !
 
 diff_2d=.false.
@@ -341,18 +404,21 @@ do i = 1, command_argument_count()
 end do
 
 !
-!    Read in the time step for plot of time-dependent atom positions 
-!    or calculation of diffusion coefficients
+!    Read in the time step in fs
 !
-read_dt=.false.
-do i = 1, command_argument_count()
-   call get_command_argument(i, arg)
-   if (trim(arg(1:10))  .eq. "-timestep=") then
-      read_dt = .true.
-      read(arg(11:),*) time_step
-      write(*,*) "The time step shall be:",time_step," fs."
-   end if
-end do
+if (calc_vacf .or. calc_diff) then
+   read_dt = .false.
+   do i = 1, command_argument_count()
+      call get_command_argument(i, arg)
+      if (trim(arg(1:4))  .eq. "-dt=") then
+         read_dt = .true.
+         read(arg(5:32),*) time_step
+         write(*,*) "The time step shall be:",time_step," fs."
+      end if
+   end do
+   read_dt=.true.
+end if
+
 
 if (calc_diff) then
    if (.not. read_dt) then
@@ -726,6 +792,7 @@ else
       end do
    end do
 
+
    write(*,*) " completed!"
    close(14)
 end if
@@ -971,7 +1038,6 @@ write(*,*) "Calculate element density distributions along z-axis..."
 z_dens = 0.d0
 allocate(z_vals(nbins))
 z_vals=0.d0
-write(*,*) "nelems",nelems
 if (use_reaxff) then
    do i=frame_first,nframes
       do l=1,natoms
@@ -1442,6 +1508,55 @@ end if
 
 
 !
+!     For VDOS calculation: remove image flags!
+!
+if (calc_vacf) then
+!     Convert to fractional coordinates
+   do i=1,nframes
+      do j=1,natoms
+         xyz(1,j,i)=xyz(1,j,i)/xlen
+         xyz(2,j,i)=xyz(2,j,i)/ylen
+         xyz(3,j,i)=xyz(3,j,i)/zlen
+      end do
+   end do
+   do i=1,nframes-1
+      do j=1,natoms
+         diff_vec(:) = xyz(:,j,i+1) - xyz(:,j,i)
+!
+!     Correct the x component
+!
+         do while (abs(diff_vec(1)) .gt. 0.5d0)
+            diff_vec(1)=diff_vec(1)-sign(1.0d0,diff_vec(1))
+         end do
+
+!
+!     Correct the y component
+!
+         do while (abs(diff_vec(2)) .gt. 0.5d0)
+            diff_vec(2)=diff_vec(2)-sign(1.0d0,diff_vec(2))
+         end do
+
+!
+!     Correct the z component
+!
+         do while (abs(diff_vec(3)) .gt. 0.5d0)
+            diff_vec(3)=diff_vec(3)-sign(1.0d0,diff_vec(3))
+         end do
+         xyz(:,j,i+1)=xyz(:,j,i)+diff_vec
+      end do
+   end do
+!    Convert back to cartesian coordinates
+   do i=1,nframes
+      do j=1,natoms
+         xyz(1,j,i)=xyz(1,j,i)*xlen
+         xyz(2,j,i)=xyz(2,j,i)*ylen
+         xyz(3,j,i)=xyz(3,j,i)*zlen
+      end do
+   end do
+end if
+
+
+!
 !    Calculate the vibrational density of states from the velocity autocorrelation
 !     function (VACF)
 !
@@ -1646,6 +1761,43 @@ write(*,*)
 write(*,*) "analyze_slab ended normally..."
 write(*,*)
 end program analyze_slab
+
+
+
+!
+!     subroutine rfft: compute the real fast fourier transform for a
+!      given array of data
+!      Rewritten 09.10.2023 (updated to Fortran03/C interface)
+!    
+!     part of EVB
+!
+subroutine rfft(x,N)
+use fftw_mod
+implicit none
+integer,intent(in) :: N
+real(kind=8),intent(inout) :: x(N)
+complex(C_DOUBLE_COMPLEX),dimension(N)::ain,aout
+
+ain=x(1:N)
+
+!
+!     If this is the first execution, generate the FFT plan (optimized code for 
+!     local machine)
+!     If the plan already was generated for a different number of beads, destroy
+!     it in advance
+!  
+if (N .ne. Np) then
+    if (Np .ne. 0) call fftw_destroy_plan(plan)
+    plan=fftw_plan_dft_1d(N,ain,aout,FFTW_FORWARD,FFTW_ESTIMATE)
+    factor = dsqrt(1.d0/N)
+    Np = N
+end if
+call fftw_execute_dft(plan,ain,aout)
+   
+x = factor * real(aout(1:N))
+      
+return
+end subroutine rfft
 
 
 subroutine replace_text (s,text,rep,outs)

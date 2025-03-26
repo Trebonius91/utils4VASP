@@ -24,7 +24,7 @@ real(kind=8)::shift_vec(3),act_val,xyz_print(3)
 integer::multiply_vec(3),pick_ind,pos_new,multiply_prod
 integer::frame_first,frame_last,line_num
 integer::read_freq
-logical::npt
+logical::npt,print_npt
 logical::eval_stat(10)
 logical::shift_cell,multiply_cell,pick_frame,print_xyz,print_last
 character(len=120)::a120,cdum,arg,adum
@@ -50,6 +50,8 @@ write(*,*) "    it to a POSCAR file (POSCAR_pick). Example: -pick_frame=283"
 write(*,*) " -print_xyz : Print each frame to a xyz trajectory: xdat_mod.xyz"
 write(*,*) " -print_last=[number] : Only print the last [number] frames into "
 write(*,*) "    the ordered file formate" 
+write(*,*) " -print_npt : Print a NVT trajectory in the NPT format, e.g., for "
+write(*,*) "    subsequent analysis with TRAVIS."
 write(*,*) "One or several of these commands can be executed. The ordering"
 write(*,*) " will be the same as the listing of the commands."
 write(*,*) "If one job apart pick_frame is ordered, the trajectory will be "
@@ -136,6 +138,17 @@ do i = 1, command_argument_count()
    call get_command_argument(i, arg)
    if (trim(arg(1:10))  .eq. "-print_xyz") then
       print_xyz=.true.
+   end if
+end do
+
+!
+!     Write the trajectory in the NPT format 
+!
+print_npt=.false.
+do i = 1, command_argument_count()
+   call get_command_argument(i, arg)
+   if (trim(arg(1:10))  .eq. "-print_npt") then
+      print_npt=.true.
    end if
 end do
 
@@ -594,6 +607,20 @@ if (print_xyz) then
    close(34)
    write(*,*) "completed!"
 else 
+   if (print_npt) then
+      if (.not. npt) then
+         npt=.true.
+         allocate(a_vecs(3,nframes))
+         allocate(b_vecs(3,nframes))
+         allocate(c_vecs(3,nframes))
+         do i=1,nframes
+            a_vecs(:,i)=a_vec
+            b_vecs(:,i)=b_vec
+            c_vecs(:,i)=c_vec
+         end do
+      end if
+      write(*,*) "The -print_npt command is given, the trajectory is written as NpT"
+   end if
    if (shift_cell .or. multiply_cell .or. print_last .or. (read_freq .gt. 1)) then
       write(*,*) "Write trajectory in VASP format to file XDATCAR_mod"
       if (frame_last .ne. 0) then

@@ -67,6 +67,7 @@ logical::skip_xdat
 logical::eval_stat(10)
 logical::track_atoms 
 logical::npt_format
+logical,allocatable::struc_used(:)
 real(kind=8)::rdf_binsize,rdf_range
 real(kind=8),allocatable::rdf_plot(:,:,:)
 real(kind=8),allocatable::neighnum(:,:,:)
@@ -1685,6 +1686,9 @@ if (cls_element .ne. "XX") then
 
       frame_round_first=frame_first+(r-1)*slice_size
       frame_round_last=frame_first+r*slice_size   
+      if (allocated(struc_used)) deallocate(struc_used)
+      allocate(struc_used(frame_round_last-frame_round_first))
+      struc_used=.false.
       write(*,*) "CLS round ",r,": From frame ", frame_round_first," to ",frame_round_last
       slices: do i=1,atom_slices
          if (i .le. 9) then
@@ -1696,9 +1700,11 @@ if (cls_element .ne. "XX") then
          end if
 
          frames: do j=frame_round_first,frame_round_last
+            if (struc_used(j-frame_round_first+1)) cycle frames
             do k=atom_first,atom_last
                if ((xyz(3,k,j) .ge. zlo+(i-1)*slice_step) .and. (xyz(3,k,j) &
                            & .le. zlo+i*slice_step)) then
+                  struc_used(j-frame_round_first+1)=.true.
                   write(18,*) natoms
                   write(18,'(a,i4,a,i4,a,f13.6,a,f13.6)') "Layer ",i," of ", & 
                            & atom_slices,": z=",zlo+(i-1)*slice_step," to ", &

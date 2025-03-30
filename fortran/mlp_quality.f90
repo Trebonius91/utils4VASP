@@ -56,13 +56,13 @@ write(*,*) " -ann : ANN output will be evaluated."
 write(*,*) " -mace : MACE output will be evaluated."
 write(*,*) " -natoms_max=[number] : Maximum number of atoms per frame of the "
 write(*,*) "   training set (default: 1000)"
-write(*,*) " -nhisto_en=[number] : Number of histogram points for plot of "
+write(*,*) " -nhisto_en=[number] : Number of histogram bins for plot of "
 write(*,*) "   errors in the energy deviation per atom (default: 100) "
-write(*,*) " -nhisto_grad=[number] : Number of histogram points for plot of "
+write(*,*) " -nhisto_grad=[number] : Number of histogram bins for plot of "
 write(*,*) "   errors in the energy deviation per atom (default: 400) "
-write(*,*) " -nhisto_2d_abs=[number] : Number of histogram points for the 2D"
+write(*,*) " -nhisto_2d_abs=[number] : Number of histogram bins for the 2D"
 write(*,*) "   plot of angle deviations, the absolute forces (default: 100)"
-write(*,*) " -nhisto_2d_angle=[number] : Number of histogram points for the 2D"
+write(*,*) " -nhisto_2d_angle=[number] : Number of histogram bins for the 2D"
 write(*,*) "   plot of angle deviations, the angle deviations (default: 100)"
 write(*,*) " -histo_en_range=[value] : Energy range for energy deviation "
 write(*,*) "   histogram, in meV per atom (default: 10.0)"
@@ -458,7 +458,7 @@ do i=1,nhisto_grad
    write(60,*) real(i)/real(nhisto_grad)*nhisto_grad_range,real(histo_grad(i))/real(ngrads)
 end do
 close(60)
-write(*,*) "Gradient error histogram written to 'gradients_compare.dat'"
+write(*,*) "Gradient error histogram written to 'gradients_histo.dat'"
 
 !
 !    Generate 2D density plot for gradient angles
@@ -537,11 +537,11 @@ write(*,*) "Plot picture written to 'gradients_histo.svg'!"
 !
 !    C) The 2D force direction error histogram
 !
-write(*,*) "Execute gnuplot file 'plot_2d_force_histo.gnu'"
-open(unit=61,file="plot_2d_force_histo.gnu",status="replace")
+write(*,*) "Execute gnuplot file 'plot_2d_grad_histo.gnu'"
+open(unit=61,file="plot_2d_grad_histo.gnu",status="replace")
 write(61,*) "set encoding iso_8859_1"
 write(61,*) "set terminal png lw 4.5 size 2000,2000 font 'Helvetica,48'"
-write(61,*) "set output '2d_force_histogram.png'"
+write(61,*) "set output '2d_gradient_histo.png'"
 write(61,*) "set xlabel 'absolute atomic force (eV/{\305})'"
 write(61,*) "set ylabel 'error in direction (°)'"
 write(61,*) "set zlabel 'relative frequency'"
@@ -555,8 +555,8 @@ write(61,*) "     0.7 'yellow',\"
 write(61,*) "     1 'red' )"
 write(61,*) "splot 'gradnorm_vs_angle_histo.dat' u 1:2:3 with pm3d"
 close(61)
-call system("gnuplot plot_2d_force_histo.gnu")
-write(*,*) "Plot picture written to '2d_force_histogram.png'!"
+call system("gnuplot plot_2d_grad_histo.gnu")
+write(*,*) "Plot picture written to '2d_gradient_histo.png'!"
 write(*,*) 
 write(*,*) "Program ann_fitness exited normally."
 write(*,*)

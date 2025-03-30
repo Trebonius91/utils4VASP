@@ -35,7 +35,7 @@ integer::el_nums(10)
 logical::write_aenet,write_mace
 character(len=2)::el_syms(10)
 
-write(*,*) "PROGRAM vasp2ann: Transforms the output of a nudged elastic band (NEB)"
+write(*,*) "PROGRAM vasp2trainset: Transforms the output of a nudged elastic band (NEB)"
 write(*,*) " or an on-the-fly VASP ML-FF generation trajectory to the training set"
 write(*,*) " format needed for either (a) the aenet program from atomisticnet for"
 write(*,*) " an artificial neural network (ANN) potential or (b) the MACE suite to"

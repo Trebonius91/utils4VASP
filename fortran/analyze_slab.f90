@@ -407,8 +407,8 @@ end do
 !
 !    Read in the time step in fs
 !
+read_dt = .false.
 if (calc_vacf .or. calc_diff) then
-   read_dt = .false.
    do i = 1, command_argument_count()
       call get_command_argument(i, arg)
       if (trim(arg(1:4))  .eq. "-dt=") then

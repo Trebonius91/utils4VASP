@@ -18,6 +18,12 @@ print('''
  This script takes a POSCAR file in direct or cartesian coordinates 
  and analyzes/measures its structure, based on given keywords. 
  The list of possible options:
+  -gen_kpoints : Generates a KPOINTS file for a given sampling density
+  -k_density=[value] : The desired reciprocal space sampling density
+     in 2pi/Angstrom (default: 0.03)
+  -gen_potcar : Generates a POTCAR file for the given POSCAR
+  -potcar_path=[path] : The path with the VASP POTCAR collection for all
+     elements (default: ~/ (home-directory))
   -density : Calculates the density of the POSCAR file (g/cm^3)
   -atoms=a,b,c : Selects a list of atoms to be used for an evaluation
      option, for example to define a plane for angle measurement.
@@ -34,11 +40,19 @@ print('''
 atoms_defined=False
 angle_job=False
 dens_job=False
+kpoints_job=False
+potcar_job=False
+k_dens=0.04
+pot_path="~/"
 
 # Read in the command line arguments
 for arg in sys.argv:
    if arg == "-density":
       dens_job=True
+   if arg == "-gen_kpoints":
+      kpoints_job=True   
+   if arg == "-gen_potcar":
+      potcar_job=True
    if re.search("=",arg):
       param,actval=arg.split("=")
       if param == "-atoms":
@@ -47,17 +61,26 @@ for arg in sys.argv:
       if param == "-plane_angle":
          coord_plane=actval
          angle_job=True
+      if param == "-k_density":
+         k_dens=actval
+      if param == "-potcar_path":
+         pot_path=actval
 
 if dens_job:
-   print("The density of the unit cell in POSCAR will be calculated.")
-else:  
+   print(" The density of the unit cell in POSCAR will be calculated.")
+elif angle_job: 
+   print(" The angle between a plane and a coord. plane will be calculated.")
+elif kpoints_job:
+   print(" A KPOINTS file for the POSCAR file will be written.")
+elif potcar_job: 
+   print(" A POTCAR file for the POSCAR file will be written.")
+else:
+   print(" Please give a valid job!\n")
+   sys.exit(1)
 
-   if ((not angle_job)):
-      print("Please give a least one valid evaluation job!")
-      sys.exit(1)
-
+if angle_job:
    if ((not atoms_defined)):
-      print("Please give a number of atoms with -atoms keyword!")
+      print(" Please give a number of atoms with -atoms keyword!")
       sys.exit(1)
 
 # Read in the POSCAR file
@@ -283,6 +306,57 @@ def vector_angle(v1, v2):
  
     return angle 
 
+#
+#  Generate a KPOINTS file for the current POSCAR file, with a given sampling
+#   density in the Brillouin zone
+#
+if kpoints_job:
+#
+#    First, calculate the volume of the unit cell
+#  
+   a_np=np.array(a_vec)
+   b_np=np.array(b_vec)
+   c_np=np.array(c_vec)
+
+   cross_product = np.cross(b_np, c_np)
+
+   triple_product = np.dot(a_np, cross_product)
+
+   volume=abs(triple_product)
+
+
+   kpoint_a = round(np.linalg.norm(np.cross(b_np,c_np))/(volume*k_dens))
+   if kpoint_a < 1:
+      kpoint_a = 1
+   kpoint_b = round(np.linalg.norm(np.cross(a_np,c_np))/(volume*k_dens))
+   if kpoint_b < 1:
+      kpoint_b = 1
+   kpoint_c = round(np.linalg.norm(np.cross(a_np,b_np))/(volume*k_dens))
+   if kpoint_c < 1:
+      kpoint_c = 1
+     
+   original_stdout=sys.stdout
+   with open("KPOINTS","w") as f:
+      sys.stdout = f
+      print("k-points, density = ",k_dens,"2pi/Ang.")
+      print("0")
+      print("Gamma")
+      print(kpoint_a,"  ",kpoint_b,"  ",kpoint_c)
+      print("0 0 0 ")
+   sys.stdout = original_stdout
+
+   print(" The KPOINTS file was written.")
+
+#
+#  Generate a POTCAR file for the current POSCAR file, with a given path
+#
+if potcar_job:
+   if os.path.isfile("POTCAR"):
+      os.system("rm POTCAR")
+   for el in elements:
+      os.system("cat "+pot_path+"potcar/PAW_PBE.52/"+el+"/POTCAR >> POTCAR")
+
+   print(" The POTCAR file was written.")
 #
 #  Calculate the density of the unit cell in the POSCAR file
 #

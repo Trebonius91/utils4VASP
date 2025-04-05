@@ -8,7 +8,7 @@
 !     Julien Steffen, 2025 (julien.steffen@fau.de)
 !
 
-program ann_fitness
+program mlp_quality
 implicit none
 integer::readstat
 integer::i,j,k,l
@@ -29,7 +29,9 @@ real(kind=8)::max_histo
 real(kind=8)::gradnorm_ann,gradnorm_ref
 real(kind=8),allocatable::energies_ann(:),energies_ref(:)
 real(kind=8),allocatable::gradients_ann(:,:,:),gradients_ref(:,:,:)
-character(len=120)::a120,adum,arg
+character(len=120)::a120,a180,adum,arg
+logical,allocatable::select_all(:,:,:)
+character(len=1)::select_line(3)
 character(len=80)::ref_filename,a80
 character(len=80),allocatable::filename_list(:)
 logical::eval_ann,eval_mace
@@ -278,6 +280,8 @@ if (eval_ann) then
    allocate(energies_ann(nframes),energies_ref(nframes))
    allocate(gradients_ann(3,natoms_max,nframes))
    allocate(gradients_ref(3,natoms_max,nframes))
+   allocate(select_all(3,natoms_max,nframes))
+   select_all=.true.
    allocate(filename_list(nframes))
 !
 !    Loop through all evaluated training set pieces
@@ -301,7 +305,8 @@ if (eval_ann) then
             read(56,'(a)') adum
          end do
          do i=1,natoms_act
-            read(56,*,iostat=readstat) adum,fdum,fdum,fdum,gradients_ann(:,i,frame_act)
+            read(56,'(a)') a180
+            read(a180,*,iostat=readstat) adum,fdum,fdum,fdum,gradients_ann(:,i,frame_act)
          end do
          read(56,*)
          read(56,*)
@@ -319,7 +324,15 @@ if (eval_ann) then
             read(57,'(a)') adum
          end do
          do i=1,natoms_act
-            read(57,*,iostat=readstat) adum,fdum,fdum,fdum,gradients_ref(:,i,frame_act)
+            read(57,'(a)') a180
+            read(a180,*,iostat=readstat) adum,fdum,fdum,fdum,gradients_ref(:,i,frame_act),select_line
+            if (readstat .eq. 0) then
+               do j=1,3
+                  if (select_line(j) .eq. "T") select_all(j,i,frame_act)=.true.
+                  if (select_line(j) .eq. "F") select_all(j,i,frame_act)=.false.
+               end do
+            end if
+
          end do    
          close(57)
       end if
@@ -358,7 +371,10 @@ if (eval_mace) then
    allocate(energies_ann(nframes),energies_ref(nframes))
    allocate(gradients_ann(3,natoms_max,nframes))
    allocate(gradients_ref(3,natoms_max,nframes))
+   allocate(select_all(3,natoms_max,nframes))
    allocate(filename_list(nframes))
+   filename_list="MACE"
+   select_all=.true.
 !
 !    Loop through all evaluated training set pieces
 !
@@ -412,9 +428,11 @@ write(*,*) "Energy scattering plot written to 'energies_compare.dat'"
 open(unit=60,file="gradients_compare.dat",status="replace")
 do i=1,nframes
    do j=1,natoms_list(i)
-      gradnorm_ann=sqrt(gradients_ann(1,j,i)**2+gradients_ann(2,j,i)**2+gradients_ann(3,j,i)**2)
-      gradnorm_ref=sqrt(gradients_ref(1,j,i)**2+gradients_ref(2,j,i)**2+gradients_ref(3,j,i)**2)
-      write(60,*) gradnorm_ann,gradnorm_ref
+      if (select_all(1,j,i)) then
+         gradnorm_ann=sqrt(gradients_ann(1,j,i)**2+gradients_ann(2,j,i)**2+gradients_ann(3,j,i)**2)
+         gradnorm_ref=sqrt(gradients_ref(1,j,i)**2+gradients_ref(2,j,i)**2+gradients_ref(3,j,i)**2)
+         write(60,*) gradnorm_ann,gradnorm_ref
+      end if
    end do
 end do
 close(60)
@@ -442,13 +460,15 @@ histo_grad=0
 ngrads=0
 do i=1,nframes
    do j=1,natoms_list(i)
-      gradnorm_ann=sqrt(gradients_ann(1,j,i)**2+gradients_ann(2,j,i)**2+gradients_ann(3,j,i)**2)
-      gradnorm_ref=sqrt(gradients_ref(1,j,i)**2+gradients_ref(2,j,i)**2+gradients_ref(3,j,i)**2)
-      gdiff=abs(gradnorm_ann-gradnorm_ref)*1000
-      k=nint(gdiff/nhisto_grad_range*nhisto_grad)+1
-      if (k .gt. nhisto_grad) cycle
-      histo_grad(k)=histo_grad(k)+1
-      ngrads=ngrads+1
+      if (select_all(1,j,i)) then
+         gradnorm_ann=sqrt(gradients_ann(1,j,i)**2+gradients_ann(2,j,i)**2+gradients_ann(3,j,i)**2)
+         gradnorm_ref=sqrt(gradients_ref(1,j,i)**2+gradients_ref(2,j,i)**2+gradients_ref(3,j,i)**2)
+         gdiff=abs(gradnorm_ann-gradnorm_ref)*1000
+         k=nint(gdiff/nhisto_grad_range*nhisto_grad)+1
+         if (k .gt. nhisto_grad) cycle
+         histo_grad(k)=histo_grad(k)+1
+         ngrads=ngrads+1
+      end if
    end do
 end do
 
@@ -467,23 +487,25 @@ ngrads=0
 histo_grad_2d=0
 do i=1,nframes
    do j=1,natoms_list(i)
+      if (select_all(1,j,i)) then
  !     write(*,*) gradients_ref(:,j,i),gradients_ann(:,j,i)
-      gradnorm_ann=sqrt(gradients_ann(1,j,i)**2+gradients_ann(2,j,i)**2+gradients_ann(3,j,i)**2)
-      gradnorm_ref=sqrt(gradients_ref(1,j,i)**2+gradients_ref(2,j,i)**2+gradients_ref(3,j,i)**2)
-      cos_theta=dot_product(gradients_ref(:,j,i),gradients_ann(:,j,i))/gradnorm_ann/gradnorm_ref
+         gradnorm_ann=sqrt(gradients_ann(1,j,i)**2+gradients_ann(2,j,i)**2+gradients_ann(3,j,i)**2)
+         gradnorm_ref=sqrt(gradients_ref(1,j,i)**2+gradients_ref(2,j,i)**2+gradients_ref(3,j,i)**2)
+         cos_theta=dot_product(gradients_ref(:,j,i),gradients_ann(:,j,i))/gradnorm_ann/gradnorm_ref
 !      write(*,*) cos_theta
-      if (cos_theta .lt. -1.d0) cos_theta=-1.d0
-      if (cos_theta .gt. 1.d0) cos_theta=1.d0
-      angle=acos(cos_theta)
-      angle=abs(angle*180.d0/acos(-1.d0))
+         if (cos_theta .lt. -1.d0) cos_theta=-1.d0
+         if (cos_theta .gt. 1.d0) cos_theta=1.d0
+         angle=acos(cos_theta)
+         angle=abs(angle*180.d0/acos(-1.d0))
 
-      k=nint(angle/nhisto_2d_angle_range*nhisto_2d_angle)+1
+         k=nint(angle/nhisto_2d_angle_range*nhisto_2d_angle)+1
 
-      l=nint(gradnorm_ref/nhisto_2d_abs_range*nhisto_2d_abs)+1
+         l=nint(gradnorm_ref/nhisto_2d_abs_range*nhisto_2d_abs)+1
 
-      if (k .gt. nhisto_2d_angle .or. l .gt. nhisto_2d_abs) cycle
-      histo_grad_2d(l,k)=histo_grad_2d(l,k)+1
-      ngrads=ngrads+1
+         if (k .gt. nhisto_2d_angle .or. l .gt. nhisto_2d_abs) cycle
+         histo_grad_2d(l,k)=histo_grad_2d(l,k)+1
+         ngrads=ngrads+1
+      end if
    end do
 end do
 
@@ -561,5 +583,5 @@ write(*,*)
 write(*,*) "Program ann_fitness exited normally."
 write(*,*)
 
-end program ann_fitness
+end program mlp_quality
 

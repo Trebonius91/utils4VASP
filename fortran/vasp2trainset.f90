@@ -25,6 +25,10 @@ real(kind=8)::energy
 real(kind=8)::cell_vecs(3,3)
 real(kind=8),allocatable::xyz(:,:)
 real(kind=8),allocatable::grad(:,:)
+character(len=1),allocatable::selective(:,:)
+logical::struc_select
+integer::at_numbers(10)
+real(kind=8)::fdum
 character(len=2),allocatable::at_names(:)
 character(len=150),allocatable::xdat_content(:)
 integer::readstat
@@ -317,6 +321,34 @@ if (eval_neb) then
 
       end do
       close(11)
+
+!
+!     Read the POSCAR file for information of selective dynamics
+!
+      if (allocated(selective)) deallocate(selective)
+      allocate(selective(3,natoms))
+      selective="T"
+      struc_select=.true.
+      open(unit=12,file="POSCAR",status="old",iostat=readstat)
+      if (readstat .ne. 0) then
+         write(*,*)
+         write(*,*) "No POSCAR found, all atoms are assumed to be movable."
+         write(*,*)
+         struc_select=.false.
+      else
+         do j=1,7
+            read(12,*)
+         end do 
+         read(12,*) a160
+         if ((index(a160,'Selective').ne.0) .or. (index(a160,'selective').ne.0)) then
+            read(12,*)
+            do j=1,natoms
+               read(12,*) fdum,fdum,fdum,selective(:,j)
+            end do 
+         end if        
+      end if         
+
+
       call chdir("..")
 !
 !     Write output for current frame (aenet)
@@ -338,7 +370,8 @@ if (eval_neb) then
          write(30,'(a)') "PRIMCOORD"
          write(30,'(i6,i1)') natoms,1
          do j=1,natoms
-            write(30,'(a,a,6f14.8)') at_names(j)," ",xyz(:,j),grad(:,j)
+            write(30,'(a,a,6f14.8,6a)') at_names(j)," ",xyz(:,j),grad(:,j)," ",selective(1,j), &
+                         & " ",selective(2,j)," ",selective(3,j)
          end do
 
          close(30)
@@ -367,6 +400,39 @@ end if
 !     Evaluate a ML-FF calculation (ML_AB file)
 !
 if (eval_mlff) then
+
+
+!
+!     Read the POSCAR file for information of selective dynamics
+!     If it is not there, assume that all atoms are movable
+!  
+   open(unit=12,file="POSCAR",status="old",iostat=readstat)
+   if (readstat .ne. 0) then
+      write(*,*)      
+      write(*,*) "No POSCAR found, all atoms are assumed to be movable."
+      write(*,*)
+      struc_select=.false.
+   else
+      do j=1,6
+         read(12,*)
+      end do
+      at_numbers=0
+      read(12,'(a)') a160
+      read(a160,*,iostat=readstat) at_numbers
+      natoms=sum(at_numbers)
+      allocate(selective(3,natoms))
+      selective="T"
+      struc_select=.true.
+
+      read(12,*) a160
+      if ((index(a160,'Selective').ne.0) .or. (index(a160,'selective').ne.0)) then
+         read(12,*)
+         do j=1,natoms
+            read(12,*) fdum,fdum,fdum,selective(:,j)
+         end do
+      end if
+   end if
+   
 !
 !     Try to open the ML_AB file, abort if its not there
 !
@@ -398,6 +464,11 @@ if (eval_mlff) then
             read(27,*) 
          end do
          read(27,*) natoms
+         if (.not. struc_select) then
+            if (allocated(selective)) deallocate(selective)
+            allocate(selective(3,natoms))
+            selective="T"
+         end if        
          do i=1,3
             read(27,*)
          end do
@@ -471,9 +542,9 @@ if (eval_mlff) then
             write(30,'(a)') "PRIMCOORD"
             write(30,'(i6,i1)') natoms,1
             do j=1,natoms
-               write(30,'(a,a,6f14.8)') at_names(j)," ",xyz(:,j),grad(:,j)
+               write(30,'(a,a,6f14.8,6a)') at_names(j)," ",xyz(:,j),grad(:,j)," ",selective(1,j), &
+                         & " ",selective(2,j)," ",selective(3,j)
             end do
-
             close(30)
 !
 !     Write name of output file to list of filenames

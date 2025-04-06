@@ -72,7 +72,7 @@ write(*,*) " -histo_grad_range=[value] : Gradient range for gradient deviation"
 write(*,*) "   histogram, in meV/Ang (default: 100.0)"
 write(*,*) " -histo_2d_abs_range=[value] : Range of absolute gradient values"
 write(*,*) "   for the 2D gradient histogram, in eV/Ang (default: 3.0)"
-write(*,*) " -histo_2d_grad_range=[value] : Range of direction error for the 2D"
+write(*,*) " -histo_2d_angle_range=[value] : Range of direction error for the 2D"
 write(*,*) "   2D gradient histogram, in degrees (default: 60.0)"
 write(*,*) 
 
@@ -242,7 +242,6 @@ do i = 1, command_argument_count()
       end if
    end if
 end do
-
 !
 !     Histogram arrays
 !

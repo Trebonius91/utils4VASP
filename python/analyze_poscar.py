@@ -19,6 +19,8 @@ print('''
  and analyzes/measures its structure, based on given keywords. 
  The list of possible options:
   -gen_kpoints : Generates a KPOINTS file for a given sampling density
+     If vacuum of more than 7 Angs. is introduced in one axis, the 
+     number of k-points in this direction will be set to 1.
   -k_density=[value] : The desired reciprocal space sampling density
      in 2pi/Angstrom (default: 0.03)
   -gen_potcar : Generates a POTCAR file for the given POSCAR
@@ -44,6 +46,7 @@ kpoints_job=False
 potcar_job=False
 k_dens=0.04
 pot_path="~/"
+vac_min=7.0
 
 # Read in the command line arguments
 for arg in sys.argv:
@@ -167,7 +170,7 @@ with poscar_in as infile:
          select_read = line.rstrip().split()[3:6]
          coord_select.append(select_read[0] + " " + select_read[1] + " " + select_read[2]) 
       for j in range(3):
-         xyz[i][j]=float(xyz_read[j]) 
+         xyz[i][j]=float(xyz_read[j])
 
 # A dictionary for the atomic masses
 elements_dict = {'H' : 1.008,'HE' : 4.003, 'LI' : 6.941, 'BE' : 9.012,\
@@ -306,46 +309,6 @@ def vector_angle(v1, v2):
  
     return angle 
 
-#
-#  Generate a KPOINTS file for the current POSCAR file, with a given sampling
-#   density in the Brillouin zone
-#
-if kpoints_job:
-#
-#    First, calculate the volume of the unit cell
-#  
-   a_np=np.array(a_vec)
-   b_np=np.array(b_vec)
-   c_np=np.array(c_vec)
-
-   cross_product = np.cross(b_np, c_np)
-
-   triple_product = np.dot(a_np, cross_product)
-
-   volume=abs(triple_product)
-
-
-   kpoint_a = round(np.linalg.norm(np.cross(b_np,c_np))/(volume*k_dens))
-   if kpoint_a < 1:
-      kpoint_a = 1
-   kpoint_b = round(np.linalg.norm(np.cross(a_np,c_np))/(volume*k_dens))
-   if kpoint_b < 1:
-      kpoint_b = 1
-   kpoint_c = round(np.linalg.norm(np.cross(a_np,b_np))/(volume*k_dens))
-   if kpoint_c < 1:
-      kpoint_c = 1
-     
-   original_stdout=sys.stdout
-   with open("KPOINTS","w") as f:
-      sys.stdout = f
-      print("k-points, density = ",k_dens,"2pi/Ang.")
-      print("0")
-      print("Gamma")
-      print(kpoint_a,"  ",kpoint_b,"  ",kpoint_c)
-      print("0 0 0 ")
-   sys.stdout = original_stdout
-
-   print(" The KPOINTS file was written.")
 
 #
 #  Generate a POTCAR file for the current POSCAR file, with a given path
@@ -395,6 +358,101 @@ if not cartesian:
 
 if cartesian:
    xyz_frac=trans_cart2frac(xyz,natoms,a_vec,b_vec,c_vec)
+
+#
+#  Generate a KPOINTS file for the current POSCAR file, with a given sampling
+#   density in the Brillouin zone
+#
+if kpoints_job:
+#
+#    First, calculate the volume of the unit cell
+#  
+   a_np=np.array(a_vec)
+   b_np=np.array(b_vec)
+   c_np=np.array(c_vec)
+
+   cross_product = np.cross(b_np, c_np)
+
+   triple_product = np.dot(a_np, cross_product)
+
+   volume=abs(triple_product)
+
+
+   kpoint_a_ex=np.linalg.norm(np.cross(b_np,c_np))/(volume*k_dens)
+   kpoint_a = round(kpoint_a_ex)
+   if kpoint_a < 1:
+      kpoint_a = 1
+   print(" k-points along a-axis:",kpoint_a_ex," (rounded:",kpoint_a,")")
+   kpoint_b_ex=np.linalg.norm(np.cross(a_np,c_np))/(volume*k_dens)
+   kpoint_b = round(kpoint_b_ex)
+   if kpoint_b < 1:
+      kpoint_b = 1
+   print(" k-points along b-axis:",kpoint_b_ex," (rounded:",kpoint_b,")")
+   kpoint_c_ex=np.linalg.norm(np.cross(a_np,b_np))/(volume*k_dens)
+   kpoint_c = round(kpoint_c_ex)
+   if kpoint_c < 1:
+      kpoint_c = 1
+   print(" k-points along c-axis:",kpoint_c_ex," (rounded:",kpoint_c,")")
+   kpoint_c_ex=np.linalg.norm(np.cross(a_np,b_np))/(volume*k_dens)
+
+#
+#    Check if vacuum exists in any of the three directions in space
+#    If yes, set the number of k-points to 1
+#    
+   for i in range(natoms):
+      for j in range(3):
+         while xyz_frac[i][j] > 1.0:
+            xyz_frac[i][j]=xyz_frac[i][j]-1.0
+         while xyz_frac[i][j] < 0.0:
+            xyz_frac[i][j]=xyz_frac[i][j]+1.0
+
+
+   vacuum=np.zeros((3))
+   for i in range(3):
+      xyz_axis=np.zeros((natoms))
+      for j in range(natoms):
+         xyz_axis[j]=xyz_frac[j][i]
+      xyz_axis=sorted(xyz_axis)
+      distances=np.zeros((natoms))
+      distances[0]=xyz_axis[0]-xyz_axis[natoms-1]+1.0
+      for j in range(natoms-1):
+         distances[j+1]=xyz_axis[j+1]-xyz_axis[j]
+      if i == 0:
+         vacuum[i]=distances.max()*np.linalg.norm(a_np)    
+      if i == 1:
+         vacuum[i]=distances.max()*np.linalg.norm(b_np)
+      if i == 2:
+         vacuum[i]=distances.max()*np.linalg.norm(c_np)
+   
+   if (vacuum[0] > vac_min):
+      print(" ")
+      print(" A vacuum of more than 7 Ang. (",vacuum[0],") exists in a direction!")
+      print(" The number of k-points along a will be set to 1.")
+      k_point_a=1
+   if (vacuum[1] > vac_min):
+      print(" ")
+      print(" A vacuum of more than 7 Ang. (",vacuum[1],") exists in b direction!")
+      print(" The number of k-points along b will be set to 1.")
+      k_point_b=1
+   if (vacuum[2] > vac_min):
+      print(" ")
+      print(" A vacuum of more than 7 Ang. (",vacuum[2],") exists in c direction!")
+      print(" The number of k-points along c will be set to 1.")
+      k_point_c=1
+
+
+
+   original_stdout=sys.stdout
+   with open("KPOINTS","w") as f:
+      sys.stdout = f
+      print("k-points, density = ",k_dens,"2pi/Ang.")
+      print("0")
+      print("Gamma")
+      print(kpoint_a,"  ",kpoint_b,"  ",kpoint_c)
+      print("0 0 0 ")
+   sys.stdout = original_stdout
+   print(" ")
+   print(" The KPOINTS file was written.")
 
 
 if angle_job:

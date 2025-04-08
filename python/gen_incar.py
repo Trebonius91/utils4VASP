@@ -55,6 +55,10 @@ ICHARG = 2
 # The PBE exchange correlation functional, mostly used
 GGA = PE
 
+# The precision of the FFT grid
+PREC = Normal  # good for most calculations
+# PREC = High  # higher precision 
+
 # Number of CPUs per orbital, should be divider of available CPUs per node
 NCORE = 4
 
@@ -94,6 +98,9 @@ IVDW = 12
 # Write no wave function to file to save memory
 LWAVE = .FALSE.
 
+# Write no charge density to file to save memory
+LCHARG = .FALSE.
+
 # Evaluation of projection operators, depending on system size
 LREAL = Auto  # For "large" systems (more than approx. 30 atoms)
 # LREAL = .FALSE. # For "small" systems
@@ -115,6 +122,7 @@ IBRION = -1
 # Set the number of MD steps to zero
 NSW = 0
          ''')
+      sys.stdout=original_stdout
    elif arg == "-geoopt": 
       print(" An INCAR for a geometry optimization is written.")
       original_stdout=sys.stdout
@@ -149,7 +157,7 @@ POTIM = 15
 ISYM = -1 # No symmetry, all complex systems with adsorbates etc.
 # ISYM = 2 # highly-symmetric systems, such as clean metal surfaces               
          ''')
-
+      sys.stdout=original_stdout
    elif arg == "-aimd":
       print(" An INCAR for ab-initio molecular dynamics (AIMD) is written.")
       original_stdout=sys.stdout
@@ -199,6 +207,7 @@ MAXMIX = 100
 # Only for NpT: Ficticious mass of lattice degree of freedom
 # PMASS = 5               
          ''')
+      sys.stdout=original_stdout
    elif arg == "-freq":
       print(" An INCAR for Hessian matrix/frequency calculation is written.")
       original_stdout=sys.stdout
@@ -236,6 +245,7 @@ ISYM = -1
          print('''
 # Activates a numerical f
          ''')
+      sys.stdout=original_stdout
    elif arg == "-dos":
       print(" An INCAR for a density of states calculation is written.")
       original_stdout=sys.stdout
@@ -244,6 +254,8 @@ ISYM = -1
          print("# This is a density of states calculation")
          header=header.replace('ISMEAR = 0 ', '# ISMEAR = 0 ')
          header=header.replace('# ISMEAR = -5 ', 'ISMEAR = -5 ')
+         header=header.replace('PREC = Normal ', '# PREC = Normal ')
+         header=header.replace('# PREC = High ', 'PREC = High ')
          print(header)
          print('''
 # Activates possible resolution of DOS into single atoms/orbitals
@@ -252,15 +264,42 @@ LORBIT = 11
 # Resolution, on how many points the DOS will be calculated
 NEDOS = 1001
 
-# High FFT precision should be used
-PREC = Accurate
-
 # The lowest energy (KS-eigenvalue), starting point of DOS plot
 # EMIN = -10.0               
 
 # The highest energy (KS-eigenvalue), end point of DOS plot
 # EMAX = 10.0
-               ''')
+         ''')
+   elif arg == "-band":
+      print(" An INCAR for a band structure calculation is written.")
+      original_stdout=sys.stdout
+      with incar as outfile:
+         sys.stdout = outfile
+         print("# This is a band structure calculation")
+         header=header.replace('# Take a superposition of atomic charge densities to construct initial density',
+                    '# Set the charge density fixed ') 
+         header=header.replace("ICHARG = 2","ICHARG = 11")
+         header=header.replace("SIGMA = 0.04 # standard value for Gaussian smearing",
+                     "SIGMA = 0.01 # small value for band structure calculations")         
+         print(header)
+         print('''
+         ''')
+      sys.stdout=original_stdout
+   elif arg == "-bader":
+      print(" An INCAR for a Bader charge calculation is written.")
+      original_stdout=sys.stdout
+      with incar as outfile:
+         sys.stdout = outfile
+         print("# This is a Bader charge calculation")
+         header=header.replace('# Write no charge density to file to save memory',
+                     '# Write the charge density to file')
+         header=header.replace('LCHARG = .FALSE.','LCHARG = .TRUE.')
+         print(header)
+         print('''
+# Write the all-electron charge density to file
+LAECHG = .TRUE.
+         ''')
+      sys.stdout=original_stdout
 
 
 

@@ -34,8 +34,7 @@ print('''
   -stm : Calculation of the needed data for a simulated STM image
   -neb : A nudged elastic band calculation with the VTST addon
   -ts_opt : A transition state (TS) optimization with the VTST addon
-  -steered_aimd : A steered molecular dynamics simulation (AIMD)
-  -steered_mlff : A steered molecular dynamics simulation (ML-FF) 
+  -steered : A steered molecular dynamics simulation (AIMD)
   -mlff_train : A on-the-fly ML-FF training calculation (new or continue)
   -mlff_select : A reselection of ML-FF local reference calculations
   -mlff_refit : Refit a given ML-FF to obtain the fast version of it
@@ -107,6 +106,11 @@ LREAL = Auto  # For "large" systems (more than approx. 30 atoms)
 '''
 
 incar = open("INCAR","w")
+if (len(sys.argv) < 2):
+   print(" Please give one of the possible calculations!")
+   print(" ")
+   sys.exit(1)
+
 for arg in sys.argv[1:]:
    if arg == "-single_point":
       print(" An INCAR for a single point calculation is written.")
@@ -241,9 +245,16 @@ ISYM = -1
       with incar as outfile:
          sys.stdout = outfile
          print("# This is an implicit solvation calculation")
+         header=header.replace('# Take a superposition of atomic charge densities to construct initial density', 
+                           '# Read the initial density/wavefunction from WAVECAR file ')
+         header=header.replace('ISTART = 0', 'ISTART = 1')
          print(header)
          print('''
-# Activates a numerical f
+# Activates the solvation calculation
+LSOL = .TRUE.
+
+# The relative permittivity of the solvent (e.g., for water: 78.4)
+EB_k = [value]               
          ''')
       sys.stdout=original_stdout
    elif arg == "-dos":
@@ -280,7 +291,10 @@ NEDOS = 1001
                     '# Set the charge density fixed ') 
          header=header.replace("ICHARG = 2","ICHARG = 11")
          header=header.replace("SIGMA = 0.04 # standard value for Gaussian smearing",
-                     "SIGMA = 0.01 # small value for band structure calculations")         
+                     "SIGMA = 0.01 # small value for band structure calculations")     
+         header=header.replace('PREC = Normal ', '# PREC = Normal ')
+         header=header.replace('# PREC = High ', 'PREC = High ')
+
          print(header)
          print('''
          ''')
@@ -300,13 +314,363 @@ NEDOS = 1001
 LAECHG = .TRUE.
          ''')
       sys.stdout=original_stdout
+   elif arg == "-cls_is":
+      print(" An INCAR for a core level shift calculation (initial state) is written.")
+      original_stdout=sys.stdout
+      with incar as outfile:
+         sys.stdout = outfile
+         print("# This is a core level shift (initial state) calculation")
+         header=header.replace('PREC = Normal ', '# PREC = Normal ')
+         header=header.replace('# PREC = High ', 'PREC = High ')
+         print(header)
+         print('''
+# Calculate the energies for the core level state electrons
+ICORELEVEL = 1
+         ''')
+      sys.stdout=original_stdout
+   elif arg == "-cls_fs":
+      print(" An INCAR for a core level shift calculation (final state) is written.")
+      original_stdout=sys.stdout
+      with incar as outfile:
+         sys.stdout = outfile
+         print("# This is a core level shift (final state) calculation")
+         header=header.replace('PREC = Normal ', '# PREC = Normal ')
+         header=header.replace('# PREC = High ', 'PREC = High ')
+         print(header)
+         print('''
+# Activates the final state mode for the core level calculation
+ICORELEVEL = 2
+
+# Number of species for which the core level shall be calculated (number in POTCAR)
+CLNT = [number]
+
+# Main quantum number of the excited electron (1: first shell, 2: second shell, ...)
+CLN = [number]
+
+# Angular quantum number L of the excited electron (0:s, 1:p, 2:d, ...)
+CLL = [number]
+
+# The number of electrons to be excited from the orbital, 0.5 is good
+CLZ = 0.5               
+         ''')
+      sys.stdout=original_stdout
+   elif arg == "-neb":
+      print(" An INCAR for a nudged elastic band (NEB) calculation is written.")
+      original_stdout=sys.stdout
+      with incar as outfile:
+         sys.stdout = outfile
+         print("# This is a nudged elastic band (NEB) calculation")
+         print(header)
+         print('''
+# Number of NEB images (usually 8, 16 or 32)
+IMAGES = [number]
+
+# The spring constant between two images along the path, -5 is default
+SPRING = -5
+
+# Activates the NEB method
+ICHAIN = 0
+
+# Activates the climbing image method, TS will be optimized as well
+LCLIMB = .TRUE.
+
+# Turns on the SS-NEB routine
+LNEBCELL = .FALSE.
+
+# Use a special optimization routine from the Henkelman group (Quick min)
+IOPT = 3
+
+# Disable VASP default optimizers for IOPT = 3
+IBRION = 3
+
+# Sets the VASP geometry optimization step to zero (all will be done by VTST)
+POTIM = 0
+
+# Dynamical NEB time step for optimization
+TIMESTEP = 0.1               
+         ''')
+      sys.stdout=original_stdout
+   elif arg == "-ts_opt":
+      print(" An INCAR for a transition state (TS) optimization is written.")
+      original_stdout=sys.stdout
+      with incar as outfile:
+         sys.stdout = outfile
+         print("# This is a transition state (TS) optimization")
+         print(header)
+         print('''
+# Activates the dimer method
+ICHAIN = 2
+
+# MD with zero time step
+IBRION = 3
+
+# Zero time step for MD optimization
+POTIM = 0
+
+# The dimer separation, twice distance between the images
+DdR = 0.005
+
+# Number of rotation steps per dimer translation
+DRotMax = 4
+
+# Lower threshold for dimer rotation (rotational force)
+DFNMin = 0.01
+
+# Upper threshold for dimer rotation
+DFNMax = 1.0               
+         ''')
+      sys.stdout=original_stdout
+   elif arg == "-steered":
+      print(" An INCAR for steered molecular dynamics (ab inito) is written.")
+      original_stdout=sys.stdout
+      with incar as outfile:
+         sys.stdout = outfile
+         print("# This is a ab-initio steered molecular dynamics calculation")
+         print(header)
+         print('''
+# Set a molecular dynamics calculation
+IBRION = 0
+
+# Set the thermostat for NVT (or activate barostat for NpT)               
+# MDALGO = 1 # Stochastic Andersen thermostat
+MDALGO = 2 # deterministic Nose-Hoover thermostat
+# MDALGO = 3 # Langevin thermostat/barostat, NpT is activated!
+
+# Number of MD steps
+NSW = 1000
+              
+# The MD time step in fs. If H is involved no larger than 1 fs!
+POTIM = 1.0
+
+# The initial temperature in K
+TEBEG = 300
+
+# The final temperature in K (if different to TEBEG, a linear ramp is applied)
+TEEND = 300
+
+# The mass of the Nose-Hoover extra degree of freedom
+SMASS = 0               
+
+# How new orbitals are predicted from old ones (previous MD step)
+IWAVPR = 12
+
+# PAW charge densities up to d-electrons are passed through Broyden mixer  
+LMAXMIX = 4
+
+# Number of previous MD steps stored in the Broyden mixer               
+MAXMIX = 100
+
+# Only for NpT: Friction coefficients of Langevin thermostat, one value per element!
+# LANGEVIN_GAMMA = 5.0 5.0 (...)
+
+# Only for NpT: Friction coefficient for lattics degree of freedom
+# LANGEVIN_GAMMA_L = 5.0
+
+# Only for NpT: Ficticious mass of lattice degree of freedom
+# PMASS = 5               
+
+# Strengths of the umbrella force constant(s) in eV/Ang, one for each constraint    
+SPRING_K = [value1] [value2] ...
+
+# Initial positions of umbrella potentials, for each chosen coordinate (Ang or rad)
+SPRING_R0 = [value1] [value2] ...               
+
+# The movement speed(s) of umbrella positions, in Ang/fs or rad/fs      
+SPRING_V0 = [value1] [value2] ...
+         ''')
+      sys.stdout=original_stdout   
+   elif arg == "-mlff_train":
+      print(" An INCAR for on the fly machine-learning force field training.")
+      original_stdout=sys.stdout
+      with incar as outfile:
+         sys.stdout = outfile
+         print("# This is an on-the-fly machine-learning force field training")
+         print(header)
+         print('''
+# Set a molecular dynamics calculation
+IBRION = 0
+
+# Set the thermostat for NVT (or activate barostat for NpT)               
+# MDALGO = 1 # Stochastic Andersen thermostat
+MDALGO = 2 # deterministic Nose-Hoover thermostat
+# MDALGO = 3 # Langevin thermostat/barostat, NpT is activated!
+
+# Number of MD steps
+NSW = 1000
+              
+# The MD time step in fs. If H is involved no larger than 1 fs!
+POTIM = 1.0
+
+# The initial temperature in K
+TEBEG = 300
+
+# The final temperature in K (if different to TEBEG, a linear ramp is applied)
+TEEND = 300
+
+# The mass of the Nose-Hoover extra degree of freedom
+SMASS = 0               
+
+# How new orbitals are predicted from old ones (previous MD step)
+IWAVPR = 12
+
+# PAW charge densities up to d-electrons are passed through Broyden mixer  
+LMAXMIX = 4
+
+# Number of previous MD steps stored in the Broyden mixer               
+MAXMIX = 100
+
+# Only for NpT: Friction coefficients of Langevin thermostat, one value per element!
+# LANGEVIN_GAMMA = 5.0 5.0 (...)
+
+# Only for NpT: Friction coefficient for lattics degree of freedom
+# LANGEVIN_GAMMA_L = 5.0
+
+# Only for NpT: Ficticious mass of lattice degree of freedom
+# PMASS = 5     
+
+# Activates the ML-FF mode (master keyword)
+ML_LMLFF = .TRUE.
+
+# Activates the learning, new (no ML_AB) or continuation (ML_AB there)
+ML_MODE = train
+
+# Number of basis functions (local reference configurations) per element
+ML_MB = 4000  # increase if complex system, decrease if memory problems
+ 
+# Number of collected reference configurations (full system screenshots)
+ML_MCONF = 4000  # increase if complex system, decrease if memory problems
+
+# Calculation will not be aborted if ML_MCONF is reached, but configs. are discarded
+ML_LBASIS_DISCARD = .TRUE.
+
+# Cutoff for the distance (two-body) descriptor in Angstroms
+ML_RCUT1 = 7.0 # might be changed, default is 5.0 
+
+# Cutoff for the angle (three-body) descriptor in Angstroms
+ML_RCUT2 = 7.0 # might be changed, default is 5.0
+         ''')
+      sys.stdout=original_stdout
+   elif arg == "-mlff_select":
+      print(" An INCAR for a selection of ML-FF training data is written.")
+      original_stdout=sys.stdout
+      with incar as outfile:
+         sys.stdout = outfile
+         print("# This is a reselection of ML-FF training data")
+         print('''
+# Activates the ML-FF mode (master keyword)
+ML_LMLFF = .TRUE.
+
+# Activates the selection of training data (from ML_AB file) mode
+ML_MODE = select
+
+# Number of basis functions (local reference configurations) per element
+ML_MB = 4000  # increase if complex system, decrease if memory problems
+ 
+# Number of collected reference configurations (full system screenshots)
+ML_MCONF = 4000  # increase if complex system, decrease if memory problems
+
+# Cutoff for the distance (two-body) descriptor in Angstroms
+ML_RCUT1 = 7.0 # might be changed, default is 5.0 
+
+# Cutoff for the angle (three-body) descriptor in Angstroms
+ML_RCUT2 = 7.0 # might be changed, default is 5.0 
+
+         ''')         
+      sys.stdout=original_stdout
+
+   elif arg == "-mlff_refit":
+      print(" An INCAR for a refit of a ML_FF to the fast mode.")
+      original_stdout=sys.stdout
+      with incar as outfile:
+         sys.stdout = outfile
+         print("# This is a refit of a ML-FF to the fast mode")
+         print('''
+# Activates the ML-FF mode (master keyword)
+ML_LMLFF = .TRUE.
+
+# Activates the refit mode for the current training data (from ML_AB file)
+ML_MODE = refit
+
+# Activates the fast mode, the refitted ML-FF will be fast
+ML_LFAST = .TRUE. 
+
+# If the ML_AB file originates from the mlff_select program, take all configs.
+# ML_EPS_LOW = 1E-20               
+         ''')
+      sys.stdout=original_stdout
+   elif arg == "-mlff_md":
+      print(" An INCAR for a MD simulation with an ML-FF.")
+      original_stdout=sys.stdout
+      with incar as outfile:
+         sys.stdout = outfile
+         print("# This is a MD simulation with a ML-FF")
+         print('''
+# Set a molecular dynamics calculation
+IBRION = 0
+
+# Set the thermostat for NVT (or activate barostat for NpT)               
+# MDALGO = 1 # Stochastic Andersen thermostat
+MDALGO = 2 # deterministic Nose-Hoover thermostat
+# MDALGO = 3 # Langevin thermostat/barostat, NpT is activated!
+
+# Number of MD steps
+NSW = 1000
+              
+# The MD time step in fs. If H is involved no larger than 1 fs!
+POTIM = 1.0
+
+# The initial temperature in K
+TEBEG = 300
+
+# The final temperature in K (if different to TEBEG, a linear ramp is applied)
+TEEND = 300
+
+# The mass of the Nose-Hoover extra degree of freedom
+SMASS = 0               
+
+# How new orbitals are predicted from old ones (previous MD step)
+IWAVPR = 12
+
+# PAW charge densities up to d-electrons are passed through Broyden mixer  
+LMAXMIX = 4
+
+# Number of previous MD steps stored in the Broyden mixer               
+MAXMIX = 100
+
+# Only for NpT: Friction coefficients of Langevin thermostat, one value per element!
+# LANGEVIN_GAMMA = 5.0 5.0 (...)
+
+# Only for NpT: Friction coefficient for lattics degree of freedom
+# LANGEVIN_GAMMA_L = 5.0
+
+# Only for NpT: Ficticious mass of lattice degree of freedom
+# PMASS = 5           
+
+# Activates the ML-FF mode (master keyword)
+ML_LMLFF = .TRUE.
+
+# Activates the run mode, evaluation of energies and gradients
+ML_MODE = run
+
+# Activates the fast mode, the refitted ML-FF will be fast
+ML_LFAST = .TRUE.
+
+# Always needed for fast ML-FFs, else, an error is thrown!
+ML_IALGO_LINREG = 4
+
+# Reduced output in each time step (e.g., no radial distribution function)
+ML_OUTPUT_MODE = 0
+
+# Only each Nth frame is printed out to OUTCAR and XDATCAR
+# ML_OUTBLOCK = 20 # comment in if you don't need each step               
+         ''')
+      sys.stdout=original_stdout
 
 
 
    else: 
       print(" Please give one of the options for INCAR!")
       sys.exit(1)
-sys.stdout=original_stdout
 
 
 print(" ")

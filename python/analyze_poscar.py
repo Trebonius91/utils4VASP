@@ -45,7 +45,7 @@ dens_job=False
 kpoints_job=False
 potcar_job=False
 k_dens=0.04
-pot_path="~/"
+pot_path="~/"  # The default POTCAR path, change if needed!
 vac_min=7.0
 
 # Read in the command line arguments

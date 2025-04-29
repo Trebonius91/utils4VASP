@@ -78,6 +78,7 @@ real(kind=8)::pres_tensor(3,3),pres_tensor_total(3,3)  ! the pressure tensor for
 real(kind=8)::pres_xx,pres_yy,pres_zz,pres_xy,pres_yz,pres_zx,tension
 real(kind=8),allocatable::vector1(:),vector2(:),vector3(:),pos_diff(:)
 real(kind=8),allocatable::diff(:),times(:),msd_func(:,:)
+real(kind=8),allocatable::rdf_sum(:,:,:)
 real(kind=8)::avg_diff,time_step
 real(kind=8)::box_volume
 !  VDOS calculation
@@ -447,7 +448,7 @@ do i = 1, command_argument_count()
    if (trim(arg)  .eq. "-rdf") then
       calc_rdf = .true.
       write(*,*) "Radial distribution functions will be calculated and "
-      write(*,*) "  written to 'rdf.dat'!"
+      write(*,*) "  written to element-combination files in the folder RDFs!"
    end if
 end do
 
@@ -920,7 +921,9 @@ if (calc_rdf) then
    eval_stat=.false.
    allocate(rdf_plot(rdf_bins,nelems,nelems))
    allocate(neighnum(rdf_bins,nelems,nelems))
+   allocate(rdf_sum(rdf_bins,nelems,nelems))
    rdf_plot=0.d0
+   rdf_sum=0.d0
    neighnum=0.d0
    task_act=0
    all_tasks=((nelems**2-nelems)/2+nelems)*(nframes-frame_first)
@@ -984,6 +987,7 @@ if (calc_rdf) then
                   ig = int(dist/rdf_binsize)
                   if ((ig .le. rdf_bins) .and. (ig .ge. 1)) then
                      rdf_plot(ig,l,m) = rdf_plot(ig,l,m) + 2.d0
+                     rdf_sum(ig,l,m)=rdf_sum(ig,l,m)+ 1.d0
                   end if        
                end do
             end do
@@ -997,40 +1001,68 @@ if (calc_rdf) then
             rho=1.d0/(abs(box_volume))
             nid=4.d0/3.d0*pi*vb*rho*2.0d0 
             rdf_plot(j,l,m)=rdf_plot(j,l,m)/(real(ngr)*real(npart1)*real(npart2)*real(nid))
+            rdf_plot(j,m,l)=rdf_plot(j,l,m)
+            rdf_sum(j,l,m)=rdf_sum(j,l,m)/ngr
+            rdf_sum(j,m,l)=rdf_sum(j,l,m)
          end do
       end do
    end do
    write(*,*) " completed!"
    rdf_plot(1,:,:)=0.d0
-   open(unit=13,file="rdf.dat",status="replace")
-   write(13,'(a)',advance="no") "#      Distance (A)        "
+!  OLD PRINTOUT OF RDF, MIGHT BE NEEDED FOR SCALMS BENCHMARK   
+!   open(unit=13,file="rdf.dat",status="replace")
+!   write(13,'(a)',advance="no") "#      Distance (A)        "
+!   do i=1,nelems
+!      do j=1,nelems
+!         write(13,'(a,a,a,a)',advance="no") trim(el_names(i)),"-",trim(el_names(j)),"       "
+!      end do
+!   end do
+!   write(13,*)
+!   do i=1,rdf_bins
+!      write(13,'(f19.10)',advance="no") i*rdf_binsize
+!      do j=1,nelems
+!         do k=1,nelems
+!            write(13,'(f19.10)',advance="no") rdf_plot(i,j,k)
+!         end do
+!      end do
+!      write(13,*)
+!   end do
+!   close(13)
+!   write(*,*) "RDF plot written to 'rdf.dat'."
+!   write(*,*)
+!  END OLD PRINTOUT
+   call system("mkdir RDFs")
+   call chdir("RDFs")
    do i=1,nelems
       do j=1,nelems
-         write(13,'(a,a,a,a)',advance="no") trim(el_names(i)),"-",trim(el_names(j)),"       "
-      end do
-   end do
-   write(13,*)
-   do i=1,rdf_bins
-      write(13,'(f19.10)',advance="no") i*rdf_binsize
-      do j=1,nelems
-         do k=1,nelems
-            write(13,'(f19.10)',advance="no") rdf_plot(i,j,k)
+!
+!    Write the RDF for the current element combination
+!
+         open(unit=13,file="RDF_"//trim(el_names(i))//"-"//trim(el_names(j))//".dat", &
+                       & status="replace")
+         write(13,'(a,a,a,a,a)') "#      Distance (A)        RDF ("&
+                       &//trim(el_names(i))//"-"//trim(el_names(j))//") "
+         do k=1,rdf_bins
+            write(13,'(2f19.10)') k*rdf_binsize,rdf_plot(k,i,j)
          end do
+!
+!    Write the integrated RDF (i.e., the number of surrounding atoms) for the
+!    current element combination)
+!
+         open(unit=13,file="RDF_int_"//trim(el_names(i))//"-"//trim(el_names(j))//".dat", &
+                       & status="replace")
+         write(13,'(a,a,a,a,a)') "#      Distance (A)       integrated RDF ("&
+                       &//trim(el_names(i))//"-"//trim(el_names(j))//") "
+
+         do k=1,rdf_bins
+            write(13,'(2f19.10)') k*rdf_binsize,sum(rdf_sum(1:k,i,j))/el_nums(i)
+         end do
+
       end do
-      write(13,*)
    end do
-   close(13)
-
-
-
- !  open(unit=14,file="nearest.dat",status="replace")
- !  do i=1,rdf_bins
- !     write(14,*) i*rdf_binsize,neighnum(i)
- !  end do
- !  close(14)
-
-   write(*,*) "RDF plot written to 'rdf.dat'."
-   write(*,*)
+   call chdir("..")
+   write(*,*) "Plots of RDFs and integrated RDFs (number of neighbors) for "
+   write(*,*) " each element combination written in folder RDFs!"
 end if 
 !
 !    Evaluate the distribution of atoms along the z axis
@@ -1086,8 +1118,8 @@ end do
 write(16,*) "    total  "
 do i=1,nbins-1
    z_vals(i)=zlo+(i-0.5d0)*zstep
-   z_dens_tot(i)=z_dens_tot(i)/(nframes*xlen*ylen*zstep)
-   z_dens(i,:)=z_dens(i,:)/(nframes*xlen*ylen*zstep)
+   z_dens_tot(i)=z_dens_tot(i)/((nframes-frame_first)*xlen*ylen*zstep)
+   z_dens(i,:)=z_dens(i,:)/((nframes-frame_first)*xlen*ylen*zstep)
    write(16,*) z_vals(i),z_dens(i,:),z_dens_tot(i)
    
 end do

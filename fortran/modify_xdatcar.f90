@@ -172,7 +172,8 @@ end do
 
 
 if ((.not. shift_cell) .and. (.not. multiply_cell) .and. (.not. pick_frame) .and. &
-           &  (.not. print_xyz) .and. (.not. print_last) .and. (read_freq .eq. 1)) then
+           &  (.not. print_xyz) .and. (.not. print_last) .and. (read_freq .eq. 1) .and. &
+           &  (.not. print_npt)) then
    write(*,*)
    write(*,*) "Please give at least one of the possible commands!"
    write(*,*)
@@ -621,7 +622,8 @@ else
       end if
       write(*,*) "The -print_npt command is given, the trajectory is written as NpT"
    end if
-   if (shift_cell .or. multiply_cell .or. print_last .or. (read_freq .gt. 1)) then
+   if (shift_cell .or. multiply_cell .or. print_last .or. (read_freq .gt. 1) .or. &
+                   & print_npt) then
       write(*,*) "Write trajectory in VASP format to file XDATCAR_mod"
       if (frame_last .ne. 0) then
          write(*,'(a,i10,a)') " Only the last ",frame_last," frames will be written."

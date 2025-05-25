@@ -94,6 +94,17 @@ SIGMA = 0.04 # standard value for Gaussian smearing
 # The Grimme empirical dispersion correction scheme with Becke-Johnson damping
 IVDW = 12
 
+# Decides which degrees of freedom are flexible 
+ISIF = 2 # only atoms are movable, stress tensor is calculated
+# ISIF = 3 # Atoms and cell shape fully movable 
+# ISIF = 7 # Only volume of cell flesible, constant shape
+# ISIF = 8 # Volume and atoms movable, constant shape
+
+# Decides if symmetry is used to speedup the calculations
+ISYM = 2 # use symmetry (single points and symmetric geoopts)
+# ISYM = 0 # Turn off most symmetry (for MD)
+# ISYM = -1 # Turn off symmetry completely (for freq and complex geoopts)
+
 # Write no wave function to file to save memory
 LWAVE = .FALSE.
 
@@ -133,6 +144,8 @@ NSW = 0
       with incar as outfile:
          sys.stdout = outfile
          print("# This is a geometry optimization")
+         header=header.replace('ISYM = 2 ', '# ISYM = 2 ')
+         header=header.replace('# ISYM = -1 ', 'ISYM = -1 ')
          print(header)
          print('''
 # Set the algorithm for the optimization, quasi-Newton or conjugate-gradient
@@ -156,10 +169,6 @@ POTIM = 0.5
 
 # Number of remembered ionic steps for quasi Newton algorithm
 POTIM = 15
-
-# Assumed symmetry of the system
-ISYM = -1 # No symmetry, all complex systems with adsorbates etc.
-# ISYM = 2 # highly-symmetric systems, such as clean metal surfaces               
          ''')
       sys.stdout=original_stdout
    elif arg == "-aimd":
@@ -168,6 +177,8 @@ ISYM = -1 # No symmetry, all complex systems with adsorbates etc.
       with incar as outfile:
          sys.stdout = outfile
          print("# This is a ab-initio molecular dynamics (AIMD) calculation")
+         header=header.replace('ISYM = 2 ', '# ISYM = 2 ')
+         header=header.replace('# ISYM = 0 ', 'ISYM = 0 ')
          print(header)
          print('''
 # Set a molecular dynamics calculation
@@ -218,6 +229,8 @@ MAXMIX = 100
       with incar as outfile:
          sys.stdout = outfile
          print("# This is a Hessian matrix/frequency calculation")
+         header=header.replace('ISYM = 2 ', '# ISYM = 2 ')
+         header=header.replace('# ISYM = -1 ', 'ISYM = -1 ')
          print(header)
          print('''
 # Activates a numerical frequency calculation
@@ -426,6 +439,8 @@ DFNMax = 1.0
       with incar as outfile:
          sys.stdout = outfile
          print("# This is a ab-initio steered molecular dynamics calculation")
+         header=header.replace('ISYM = 2 ', '# ISYM = 2 ')
+         header=header.replace('# ISYM = 0 ', 'ISYM = 0 ')
          print(header)
          print('''
 # Set a molecular dynamics calculation
@@ -485,6 +500,8 @@ SPRING_V0 = [value1] [value2] ...
       with incar as outfile:
          sys.stdout = outfile
          print("# This is an on-the-fly machine-learning force field training")
+         header=header.replace('ISYM = 2 ', '# ISYM = 2 ')
+         header=header.replace('# ISYM = 0 ', 'ISYM = 0 ')
          print(header)
          print('''
 # Set a molecular dynamics calculation

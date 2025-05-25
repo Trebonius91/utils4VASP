@@ -119,7 +119,8 @@ for arg in sys.argv:
          map2unit=True 
 
 if ((not multiply_job) and (not shift_job) and (not frac2cart) and (not cart2frac) 
-    and (not writexyz) and (not freeze) and (not bottom) and(not insert)):
+    and (not writexyz) and (not freeze) and (not bottom) and(not insert)
+    and (not map2unit)):
    print("Please give a least one valid keyword!")
    sys.exit(1)
 

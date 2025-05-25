@@ -13,7 +13,9 @@ import re
 import numpy as np
 from numpy import linalg as LA
 
-
+#
+#    only print the overview of utils4VASP scripts/programs and stop
+#
 print('''
  This script generates INCAR files for a large variety of different 
  typical VASP calculations that are described in the utils4VASP Wiki.
@@ -39,8 +41,12 @@ print('''
   -mlff_select : A reselection of ML-FF local reference calculations
   -mlff_refit : Refit a given ML-FF to obtain the fast version of it
   -mlff_md : A ML-FF molecular dynamics calculation, similar to AIMD
+ Give the -overview command for an overview of utils4VASP.
 ''')
 
+#
+#    Print general information and all possible keywords of the program    
+#
 header = '''
 # Enter the name of your system here: 
 SYSTEM = New system
@@ -645,14 +651,8 @@ TEEND = 300
 # The mass of the Nose-Hoover extra degree of freedom
 SMASS = 0               
 
-# How new orbitals are predicted from old ones (previous MD step)
-IWAVPR = 12
-
-# PAW charge densities up to d-electrons are passed through Broyden mixer  
-LMAXMIX = 4
-
-# Number of previous MD steps stored in the Broyden mixer               
-MAXMIX = 100
+# How new orbitals are predicted from old ones (simple extrapolation for ML)
+IWAVPR = 11
 
 # Only for NpT: Friction coefficients of Langevin thermostat, one value per element!
 # LANGEVIN_GAMMA = 5.0 5.0 (...)

@@ -7,19 +7,19 @@
 !    Part of VASP4CLINT
 !     Julien Steffen, 2024 (julien.steffen@fau.de)
 !
-module fftw_mod
-   use,intrinsic :: iso_c_binding
-   include 'fftw3.f03'
-
-   integer::Np
-   integer, parameter :: Nmax = 1024
-   type(C_PTR) :: plan
-   real(kind=8)::factor
-end module fftw_mod
+!module fftw_mod
+!   use,intrinsic :: iso_c_binding
+!   include 'fftw3.f03'
+!
+!   integer::Np
+!   integer, parameter :: Nmax = 1024
+!   type(C_PTR) :: plan
+!   real(kind=8)::factor
+!end module fftw_mod
 
 
 program analyze_bulk
-use fftw_mod
+!use fftw_mod
 implicit none
 integer::i,j,k,l,m
 integer::readstat
@@ -85,12 +85,59 @@ logical::calc_rdf,read_time
 
 pi=3.141592653589793238
 a2bohr=1.8897259886d0
+
+!
+!    only print the overview of utils4VASP scripts/programs and stop
+!
+do i = 1, command_argument_count()
+   call get_command_argument(i, arg)
+   if (trim(arg)  .eq. "-overview") then
+      write(*,*)
+      write(*,*) "utils4VASP: Setup and Evaluation of DFT and MLP simulations with VASP"
+      write(*,*) "The following scripts and programs are contained:"
+      write(*,*) "Setup:"
+      write(*,*) " - gen_incar.py: Generate INCAR file templates for several job types"
+      write(*,*) " - analyze_poscar.py: Analyze POSCAR, generate KPOINTS and POTCAR"
+      write(*,*) " - build_alloy.py: Build regular alloy structures of various shapes"
+      write(*,*) " - modify_poscar.py: Modify POSCAR: multiply, transform, shift, insert etc."
+      write(*,*) " - cut_unitcell: Generate surface slab unit cells of arbitrary shape"
+      write(*,*) " - build_adsorb.py: Place adsorbates on surfaces, set translation, rotation"
+      write(*,*) " - split_freq: Divide frequency calculations for large molecules"
+      write(*,*) "Evaluation:"
+      write(*,*) " - modify_xdatcar: Modify trajectory files: multiply, shift, pick etc."
+      write(*,*) " - analyze_bulk: Analyze bulk MD trajectories for RDFs, diffusion etc."
+      write(*,*) " - analyze_slab: Analyze slab MD trajectories for RDFs, density etc."
+      write(*,*) " - check_geoopt.py: Monitor geometry optimizations with selective dynamics"
+      write(*,*) " - manage_cls: Prepare, evaluate core level energy calculations"
+      write(*,*) " - eval_bader: Evaluate and visualize Bader charge calculations"
+      write(*,*) " - eval_stm: Generate STM images with different settings"
+      write(*,*) " - partial_dos: Plot atom and orbital resolved density of states"
+      write(*,*) " - manage_neb.py: Setup, monitor and restart NEB calculations"
+      write(*,*) "ML-FF:"
+      write(*,*) " - mlff_select: Heuristic selection of local reference configurations"
+      write(*,*) " - eval_vasp_ml.py: Visualize results of VASP ML-FF on the fly learnings"
+      write(*,*) " - vasp2trainset: Generate ML-FF training sets from VASP calculations"
+      write(*,*) " - mlp_quality: Determine quality of MLPs for VASP validation set"
+      write(*,*) "Management:"
+      write(*,*) " - md_long.sh: Automated restart of MD calculations with slurm"
+      write(*,*) " - opt_long.sh: Automated restart of geometry optimizations with slurm"
+      write(*,*) " - ml_long.sh: Automated restart of VASP ML-FF on the fly learnings"
+      write(*,*) " - mace_long.sh: Automated restart of MACE MD trajectories with ASE "
+      write(*,*)
+      stop
+   end if
+end do
+
+!
+!    Print general information and all possible keywords of the program    
+!
 write(*,*) "PROGRAM analyze_bulk: evaluation of MD trajectories from three-dimensional"
 write(*,*) " bulk systems."
 write(*,*) "Only a XDATCAR file in VASP format needs to be present."
 write(*,*) "Usage: eval_vasp_md -command1 -command2 ..."
 write(*,*)
 write(*,*) "List of commands:"
+write(*,*) " -overview:  print an overview of all scripts and programs in utils4VASP"
 write(*,*) " -msd:  the mean square displacement (and self-diffusion coefficient) of up to"
 write(*,*) "   three different elements is calculated."
 write(*,*) " -vib_dens:  the vibrational density of states (IR spectrum without intensities)"
@@ -98,10 +145,10 @@ write(*,*) "        is calculated from the VACF"
 write(*,*) " -dt=[time step in fs]: The time step used for MD simulation, in fs."
 write(*,*) " -corrt=[time in fs]: Length of the VACF correlation interval to be calculated."
 write(*,*) "       (default: 1000 fs)"
-write(*,*) " -vib_inter=[number]: The interval in which the IR spectrum is plotted (upper limit)"
-write(*,*) "       (default: 6000 cm^-1)"
-write(*,*) " -vib_width=[value]: The Gaussian broadening of the VACF IR spectrum. "
-write(*,*) "       (default: 0.001, larger value gives less broadening)"
+!write(*,*) " -vib_inter=[number]: The interval in which the IR spectrum is plotted (upper limit)"
+!write(*,*) "       (default: 6000 cm^-1)"
+!write(*,*) " -vib_width=[value]: The Gaussian broadening of the VACF IR spectrum. "
+!write(*,*) "       (default: 0.001, larger value gives less broadening)"
 write(*,*) " -readtime: The time of each XDATCAR (in s) will be read in from file 'times.dat'"
 write(*,*) "    useful for the evaluation of kinetic Monte Carlo simulations."
 write(*,*) " -skip=[steps to skip]: If the first N steps shall be skipped (equilibration.)"
@@ -719,7 +766,7 @@ if (calc_vacf) then
    vacf_pad(1:frames_part)=vacf_func
 !   call dfftw_plan_dft_r2c_1d(plan,frames_part*1,vacf_pad,fourier_out,FFTW_ESTIMATE)
 !   call dfftw_execute_dft_r2c(plan, vacf_pad,fourier_out)
-   call rfft(vacf_pad, frames_part*1)
+!   call rfft(vacf_pad, frames_part*1)
 
 !
 !    Generate a smoothened plot of the VDOS
@@ -1073,14 +1120,14 @@ end program analyze_bulk
 !    
 !     part of EVB
 !
-subroutine rfft(x,N)
-use fftw_mod
-implicit none
-integer,intent(in) :: N
-real(kind=8),intent(inout) :: x(N)
-complex(C_DOUBLE_COMPLEX),dimension(N)::ain,aout
+!subroutine rfft(x,N)
+!use fftw_mod
+!implicit none
+!integer,intent(in) :: N
+!real(kind=8),intent(inout) :: x(N)
+!complex(C_DOUBLE_COMPLEX),dimension(N)::ain,aout
 
-ain=x(1:N)
+!ain=x(1:N)
 
 !
 !     If this is the first execution, generate the FFT plan (optimized code for 
@@ -1088,18 +1135,18 @@ ain=x(1:N)
 !     If the plan already was generated for a different number of beads, destroy
 !     it in advance
 !
-if (N .ne. Np) then
-    if (Np .ne. 0) call fftw_destroy_plan(plan)
-    plan=fftw_plan_dft_1d(N,ain,aout,FFTW_FORWARD,FFTW_ESTIMATE)
-    factor = dsqrt(1.d0/N)
-    Np = N
-end if
-call fftw_execute_dft(plan,ain,aout)
+!if (N .ne. Np) then
+!    if (Np .ne. 0) call fftw_destroy_plan(plan)
+!    plan=fftw_plan_dft_1d(N,ain,aout,FFTW_FORWARD,FFTW_ESTIMATE)
+!    factor = dsqrt(1.d0/N)
+!    Np = N
+!end if
+!call fftw_execute_dft(plan,ain,aout)
 
-x = factor * real(aout(1:N))
+!x = factor * real(aout(1:N))
 
-return
-end subroutine rfft
+!return
+!end subroutine rfft
 
 
 !

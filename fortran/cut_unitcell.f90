@@ -35,6 +35,52 @@ character(len=1)::active_chosen(10000,3)
 
 pi=3.14159265359d0
 
+
+!
+!    only print the overview of utils4VASP scripts/programs and stop
+!
+do i = 1, command_argument_count()
+   call get_command_argument(i, arg_a)
+   if (trim(arg_a)  .eq. "-overview") then
+      write(*,*)
+      write(*,*) "utils4VASP: Setup and Evaluation of DFT and MLP simulations with VASP"
+      write(*,*) "The following scripts and programs are contained:"
+      write(*,*) "Setup:"
+      write(*,*) " - gen_incar.py: Generate INCAR file templates for several job types"
+      write(*,*) " - analyze_poscar.py: Analyze POSCAR, generate KPOINTS and POTCAR"
+      write(*,*) " - build_alloy.py: Build regular alloy structures of various shapes"
+      write(*,*) " - modify_poscar.py: Modify POSCAR: multiply, transform, shift, insert etc."
+      write(*,*) " - cut_unitcell: Generate surface slab unit cells of arbitrary shape"
+      write(*,*) " - build_adsorb.py: Place adsorbates on surfaces, set translation, rotation"
+      write(*,*) " - split_freq: Divide frequency calculations for large molecules"
+      write(*,*) "Evaluation:"
+      write(*,*) " - modify_xdatcar: Modify trajectory files: multiply, shift, pick etc."
+      write(*,*) " - analyze_bulk: Analyze bulk MD trajectories for RDFs, diffusion etc."
+      write(*,*) " - analyze_slab: Analyze slab MD trajectories for RDFs, density etc."
+      write(*,*) " - check_geoopt.py: Monitor geometry optimizations with selective dynamics"
+      write(*,*) " - manage_cls: Prepare, evaluate core level energy calculations"
+      write(*,*) " - eval_bader: Evaluate and visualize Bader charge calculations"
+      write(*,*) " - eval_stm: Generate STM images with different settings"
+      write(*,*) " - partial_dos: Plot atom and orbital resolved density of states"
+      write(*,*) " - manage_neb.py: Setup, monitor and restart NEB calculations"
+      write(*,*) "ML-FF:"
+      write(*,*) " - mlff_select: Heuristic selection of local reference configurations"
+      write(*,*) " - eval_vasp_ml.py: Visualize results of VASP ML-FF on the fly learnings"
+      write(*,*) " - vasp2trainset: Generate ML-FF training sets from VASP calculations"
+      write(*,*) " - mlp_quality: Determine quality of MLPs for VASP validation set"
+      write(*,*) "Management:"
+      write(*,*) " - md_long.sh: Automated restart of MD calculations with slurm"
+      write(*,*) " - opt_long.sh: Automated restart of geometry optimizations with slurm"
+      write(*,*) " - ml_long.sh: Automated restart of VASP ML-FF on the fly learnings"
+      write(*,*) " - mace_long.sh: Automated restart of MACE MD trajectories with ASE "
+      write(*,*)
+      stop
+   end if
+end do
+
+!
+!    Print general information and all possible keywords of the program    
+!
 write(*,*)
 write(*,*) "PROGRAM cut_unitcell: cutting an (almost) arbitrary unit"
 write(*,*) " cell from a large given surface."
@@ -44,7 +90,8 @@ write(*,*) "Give the numbers of three atoms that shall span the plane "
 write(*,*) " of the cut out unit cell with the following command:"
 write(*,*) " -span_atoms=[indices] "
 write(*,*) "After execution, a file named POSCAR_cut with the cut unit "
-write(*,*)"  cell is written."
+write(*,*) "  cell is written."
+write(*,*) "Give the -overview command to give an overview of utils4VASP"
 !
 !     First, read in the given POSCAR of the large surface
 !

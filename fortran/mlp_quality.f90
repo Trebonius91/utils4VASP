@@ -1,14 +1,17 @@
-
 !
 !    mlp_quality: Evaluate the quality of a MLP with respect to the 
 !      reproduction of a given training or verification set.
-!      Currently, Behler neural networks or message-passing atomic cluster
-!      expansion (MACE) can be evaluated.
+!      Currently, Behler neural networks, message-passing atomic cluster
+!      expansion (MACE) and VASP ML-FF production runs can be evaluated.
+!
 !    Part of utils4VASP
-!     Julien Steffen, 2025 (julien.steffen@fau.de)
+!
+!     Julien Steffen,     2025 (julien.steffen@fau.de)
+!     Maximilian Bechtel, 2025 (maxi.bechtel@fau.de)
 !
 
 program mlp_quality
+
 implicit none
 integer::readstat
 integer::i,j,k,l
@@ -17,6 +20,7 @@ integer::natoms_max,natoms_act
 integer::ngrads
 integer,allocatable::natoms_list(:)
 integer::frame_act
+integer::force_num
 integer::nhisto_en,nhisto_grad
 integer::nhisto_2d_abs,nhisto_2d_angle
 integer,allocatable::histo_en(:),histo_grad(:)
@@ -29,14 +33,59 @@ real(kind=8)::max_histo
 real(kind=8)::gradnorm_ann,gradnorm_ref
 real(kind=8),allocatable::energies_ann(:),energies_ref(:)
 real(kind=8),allocatable::gradients_ann(:,:,:),gradients_ref(:,:,:)
+real(kind=8)::mae_energy,rmse_energy,mae_forces,rmse_forces
 character(len=120)::a120,a180,adum,arg
 logical,allocatable::select_all(:,:,:)
 character(len=1)::select_line(3)
 character(len=80)::ref_filename,a80
 character(len=80),allocatable::filename_list(:)
-logical::eval_ann,eval_mace
+logical::eval_ann,eval_mace,eval_vasp
 
+!
+!    only print the overview of utils4VASP scripts/programs and stop
+!
+do i = 1, command_argument_count()
+   call get_command_argument(i, arg)
+   if (trim(arg)  .eq. "-overview") then
+      write(*,*)
+      write(*,*) "utils4VASP: Setup and Evaluation of DFT and MLP simulations with VASP"
+      write(*,*) "The following scripts and programs are contained:"
+      write(*,*) "Setup:"
+      write(*,*) " - gen_incar.py: Generate INCAR file templates for several job types"
+      write(*,*) " - analyze_poscar.py: Analyze POSCAR, generate KPOINTS and POTCAR"
+      write(*,*) " - build_alloy.py: Build regular alloy structures of various shapes"
+      write(*,*) " - modify_poscar.py: Modify POSCAR: multiply, transform, shift, insert etc."
+      write(*,*) " - cut_unitcell: Generate surface slab unit cells of arbitrary shape"
+      write(*,*) " - build_adsorb.py: Place adsorbates on surfaces, set translation, rotation"
+      write(*,*) " - split_freq: Divide frequency calculations for large molecules"
+      write(*,*) "Evaluation:"
+      write(*,*) " - modify_xdatcar: Modify trajectory files: multiply, shift, pick etc."
+      write(*,*) " - analyze_bulk: Analyze bulk MD trajectories for RDFs, diffusion etc."
+      write(*,*) " - analyze_slab: Analyze slab MD trajectories for RDFs, density etc."
+      write(*,*) " - check_geoopt.py: Monitor geometry optimizations with selective dynamics"
+      write(*,*) " - manage_cls: Prepare, evaluate core level energy calculations"
+      write(*,*) " - eval_bader: Evaluate and visualize Bader charge calculations"
+      write(*,*) " - eval_stm: Generate STM images with different settings"
+      write(*,*) " - partial_dos: Plot atom and orbital resolved density of states"
+      write(*,*) " - manage_neb.py: Setup, monitor and restart NEB calculations"
+      write(*,*) "ML-FF:"
+      write(*,*) " - mlff_select: Heuristic selection of local reference configurations"
+      write(*,*) " - eval_vasp_ml.py: Visualize results of VASP ML-FF on the fly learnings"
+      write(*,*) " - vasp2trainset: Generate ML-FF training sets from VASP calculations"
+      write(*,*) " - mlp_quality: Determine quality of MLPs for VASP validation set"
+      write(*,*) "Management:"
+      write(*,*) " - md_long.sh: Automated restart of MD calculations with slurm"
+      write(*,*) " - opt_long.sh: Automated restart of geometry optimizations with slurm"
+      write(*,*) " - ml_long.sh: Automated restart of VASP ML-FF on the fly learnings"
+      write(*,*) " - mace_long.sh: Automated restart of MACE MD trajectories with ASE "
+      write(*,*)
+      stop
+   end if
+end do
       
+!
+!    Print general information and all possible keywords of the program    
+!
 write(*,*)
 write(*,*) "PROGRAM mlp_quality: Evaluation of a MLP with respect to the "
 write(*,*) " reproduction of a given training or verification set."
@@ -51,11 +100,18 @@ write(*,*) " by vasp2trainset and containing the VASP energies and forces"
 write(*,*) " Further, the files energies_mace.dat, resulting from the ASE"
 write(*,*) " MACE trajectory (without header lines) and gradients_mace.dat"
 write(*,*) " also resulting from the ASE calculation, must be there."
-write(*,*) " The ordering of the structures must be the same in all files!"
+write(*,*) "For VASP ML-FF, the file vasp_results.xyz must be there, generated"
+write(*,*) " by vasp2trainset containing the VASP energies and forces"
+write(*,*) " (the same as for MACE). Further, the OUTCAR from the VASP ML-FF"
+write(*,*) " production run must be there."
+write(*,*) "The ordering of the structures must be the same in all files!"
 write(*,*) "The following keywords can be given (those with default values"
 write(*,*) " are optional):"
-write(*,*) " -ann : ANN output will be evaluated."
-write(*,*) " -mace : MACE output will be evaluated."
+write(*,*) " -overview:  print an overview of all scripts and programs "
+write(*,*) "   in utils4VASP"
+write(*,*) " -ann  : ANN        output will be evaluated."
+write(*,*) " -mace : MACE       output will be evaluated."
+write(*,*) " -vasp : VASP ML-FF output will be evaluated."
 write(*,*) " -natoms_max=[number] : Maximum number of atoms per frame of the "
 write(*,*) "   training set (default: 1000)"
 write(*,*) " -nhisto_en=[number] : Number of histogram bins for plot of "
@@ -99,12 +155,35 @@ do i = 1, command_argument_count()
    end if
 end do
 
-if (.not. eval_ann .and. .not. eval_mace) then
-   write(*,*) "Please choose either ANN or MACE!"
+!
+!     If VASP ML-FF data shall be evaluated
+!
+eval_vasp=.false.
+do i = 1, command_argument_count()
+   call get_command_argument(i, arg)
+   if (trim(arg(1:10))  .eq. "-vasp") then
+      eval_vasp=.true.
+   end if
+end do
+
+if (.not. eval_ann .and. .not. eval_mace .and. .not. eval_vasp) then
+   write(*,*) "Please choose either ANN, MACE or VASP ML-FF!"
    stop
 end if
 if (eval_ann .and. eval_mace) then
    write(*,*) "Please choose either ANN or MACE!"
+   stop
+end if
+if (eval_ann .and. eval_vasp) then
+   write(*,*) "Please choose either ANN or VASP ML-FF!"
+   stop
+end if
+if (eval_mace .and. eval_vasp) then
+   write(*,*) "Please choose either MACE or VASP ML-FF!"
+   stop
+end if
+if (eval_ann .and. eval_mace .and. eval_vasp) then
+   write(*,*) "Please choose either ANN, MACE or VASP ML-FF!"
    stop
 end if
 if (eval_ann) then
@@ -113,6 +192,9 @@ end if
 if (eval_mace) then
    write(*,*) "Message-Passing Atomic Cluster Expansion (MACE) will be evaluated!"
 end if   
+if (eval_vasp) then
+   write(*,*) "Energies and gradients from a VASP ML-FF OUTCAR will be evaluated ..."
+end if
 write(*,*)
 !
 !     Maximum number of atoms that can appear in the training set
@@ -273,7 +355,7 @@ if (eval_ann) then
       end if 
    end do
    write(*,*) 
-   write(*,*) "Start quality evalation ..."
+   write(*,*) "Start quality evaluation ..."
    close(56)
    allocate(natoms_list(nframes))
    allocate(energies_ann(nframes),energies_ref(nframes))
@@ -364,7 +446,7 @@ if (eval_mace) then
    end do
    write(*,*) "Number of structures to evaluate: ",nframes
    write(*,*)
-   write(*,*) "Start quality evalation ..."
+   write(*,*) "Start quality evaluation ..."
    close(56)
    allocate(natoms_list(nframes))
    allocate(energies_ann(nframes),energies_ref(nframes))
@@ -408,6 +490,146 @@ if (eval_mace) then
    close(58)
    write(*,*) "... finished!"
 end if
+write(*,*)
+
+!
+!     Evaluate VASP ML-FF results 
+!
+if (eval_vasp) then
+
+   open(unit=56,file="vasp_results.xyz",status="old",iostat=readstat)
+   if (readstat .ne. 0) then
+      write(*,*) "The file 'vasp_results.xyz' is not there!"
+      stop
+   end if
+
+   !
+   ! Determine the number of frames in vasp_results.xyz
+   !
+   nframes = 0
+   do
+      read(56,'(a)',iostat=readstat) a120
+      if (readstat .ne. 0) exit  ! Break if End of File reached
+
+      if (index(a120,'Lattice=') .ne. 0 ) then  ! "Lattice=" marks begin of a new frame
+         nframes = nframes + 1
+      end if
+   end do
+
+   write(*,*) "Number of structures to evaluate: ", nframes
+   write(*,*)
+   write(*,*) "Start quality evaluation ..."
+
+   close(56)
+
+   !
+   ! Allocate all needed arrays
+   !
+   allocate(natoms_list(nframes))
+   allocate(energies_ann(nframes),energies_ref(nframes))
+   allocate(gradients_ann(3,natoms_max,nframes))
+   allocate(gradients_ref(3,natoms_max,nframes))
+   allocate(select_all(3,natoms_max,nframes))
+   allocate(filename_list(nframes))
+   filename_list="VASP ML-FF"
+   select_all=.true.
+
+   !
+   ! Loop through all evaluated training set pieces
+   !
+   open(unit=56,file="vasp_results.xyz",status="old")
+   open(unit=57,file="OUTCAR",status="old",iostat=readstat)
+   if (readstat .ne. 0) then
+      write(*,*) "The file 'OUTCAR' is not there!"
+      stop
+   end if
+
+   ! REFERENCE DATA !
+   write(*,*) "Collecting reference data from vasp_results.xyz ..."
+   frame_act = 0
+   do i = 1, nframes
+      read(56,*) natoms_act
+      natoms_list(i) = natoms_act  ! Get current number of atoms
+
+      ! Get reference energy
+      read(56,*) adum,adum,adum,adum,adum,adum,adum,adum,adum,adum,adum,adum,adum,energies_ref(i)
+
+      ! Get reference gradients
+      do j = 1, natoms_act
+         read(56,*,iostat=readstat) adum,fdum,fdum,fdum,fdum,gradients_ref(:,j,i)
+      end do
+   end do
+
+   ! VASP ML-FF DATA FROM OUTCAR !
+   write(*,*) "Collecting VASP ML-FF data from OUTCAR ..."
+   i = 1
+   do
+      ! Loop through OUTCAR until End of File reached
+      read(57,'(a)',iostat=readstat) a120
+      if (readstat .ne. 0) exit
+
+      ! Check if line with ML gradients was found
+      if ( index(a120, "TOTAL-FORCE (eV/Angst) (ML)") .ne. 0 ) then
+        read(57,'(a)') adum
+
+        do j = 1, natoms_list(i)
+           read(57,*,iostat=readstat) adum,adum,adum,gradients_ann(:,j,i)
+        end do
+      end if
+
+      ! Check if line with ML energy was found
+      if ( index(a120, "ML energy(sigma->0)") .ne. 0 ) then
+         read(a120,*,iostat=readstat) adum,adum,adum,adum,adum,adum,adum,adum,energies_ann(i)
+         i = i + 1
+      end if
+   end do
+
+   close(56)
+   close(57)
+   write(*,*) "... finished!"
+
+end if
+write(*,*)
+
+!
+!     Calculate mean absolute errors (MAE) and root mean square errors (RMSE)
+!
+mae_energy=0d0
+rmse_energy=0d0
+do i=1,nframes
+   mae_energy=mae_energy+abs(energies_ref(i)-energies_ann(i))   
+   rmse_energy=rmse_energy+sqrt((energies_ref(i)-energies_ann(i))**2)
+end do
+mae_energy=mae_energy/real(nframes)*1000d0
+rmse_energy=rmse_energy/real(nframes)*1000d0
+
+write(*,*) "---------------------------------------------------------"
+write(*,'(a,f13.6,a)') "MAE(energy):",mae_energy,"meV"
+write(*,'(a,f13.6,a)') "RMSE(energy):",rmse_energy,"meV"
+
+!
+!     MAE and RMSE for forces, only for selected atoms!
+!
+mae_forces=0d0
+rmse_forces=0d0
+force_num=0
+do i=1,nframes
+   do j=1,natoms_list(i)
+      do k=1,3
+         if (select_all(1,j,i)) then
+            mae_forces=mae_forces+abs(gradients_ref(k,j,i)-gradients_ann(k,j,i))
+            rmse_forces=rmse_forces+sqrt((gradients_ref(k,j,i)-gradients_ann(k,j,i))**2)
+            force_num=force_num+1
+         end if
+      end do
+   end do
+end do
+mae_forces=mae_forces/real(force_num)*1000d0
+rmse_forces=rmse_forces/real(force_num)*1000d0
+
+write(*,'(a,f13.6,a)') "MAE(force components):",mae_forces,"meV/Ang."
+write(*,'(a,f13.6,a)') "RMSE(force components):",rmse_forces,"meV/Ang."
+write(*,*) "---------------------------------------------------------"
 write(*,*)
 
 !
@@ -578,8 +800,9 @@ write(61,*) "splot 'gradnorm_vs_angle_histo.dat' u 1:2:3 with pm3d"
 close(61)
 call system("gnuplot plot_2d_grad_histo.gnu")
 write(*,*) "Plot picture written to '2d_gradient_histo.png'!"
+
 write(*,*) 
-write(*,*) "Program ann_fitness exited normally."
+write(*,*) "Program mlp_quality exited normally."
 write(*,*)
 
 end program mlp_quality

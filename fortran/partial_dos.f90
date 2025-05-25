@@ -24,6 +24,51 @@ integer,allocatable::ind_list(:),ind_list_read(:)
 logical::dos_elements,dos_indices,act_read,el_all,orb_all,use_orbital
 logical,allocatable::orb_used(:)
 
+!
+!    only print the overview of utils4VASP scripts/programs and stop
+!
+do i = 1, command_argument_count()
+   call get_command_argument(i, arg)
+   if (trim(arg)  .eq. "-overview") then
+      write(*,*)
+      write(*,*) "utils4VASP: Setup and Evaluation of DFT and MLP simulations with VASP"
+      write(*,*) "The following scripts and programs are contained:"
+      write(*,*) "Setup:"
+      write(*,*) " - gen_incar.py: Generate INCAR file templates for several job types"
+      write(*,*) " - analyze_poscar.py: Analyze POSCAR, generate KPOINTS and POTCAR"
+      write(*,*) " - build_alloy.py: Build regular alloy structures of various shapes"
+      write(*,*) " - modify_poscar.py: Modify POSCAR: multiply, transform, shift, insert etc."
+      write(*,*) " - cut_unitcell: Generate surface slab unit cells of arbitrary shape"
+      write(*,*) " - build_adsorb.py: Place adsorbates on surfaces, set translation, rotation"
+      write(*,*) " - split_freq: Divide frequency calculations for large molecules"
+      write(*,*) "Evaluation:"
+      write(*,*) " - modify_xdatcar: Modify trajectory files: multiply, shift, pick etc."
+      write(*,*) " - analyze_bulk: Analyze bulk MD trajectories for RDFs, diffusion etc."
+      write(*,*) " - analyze_slab: Analyze slab MD trajectories for RDFs, density etc."
+      write(*,*) " - check_geoopt.py: Monitor geometry optimizations with selective dynamics"
+      write(*,*) " - manage_cls: Prepare, evaluate core level energy calculations"
+      write(*,*) " - eval_bader: Evaluate and visualize Bader charge calculations"
+      write(*,*) " - eval_stm: Generate STM images with different settings"
+      write(*,*) " - partial_dos: Plot atom and orbital resolved density of states"
+      write(*,*) " - manage_neb.py: Setup, monitor and restart NEB calculations"
+      write(*,*) "ML-FF:"
+      write(*,*) " - mlff_select: Heuristic selection of local reference configurations"
+      write(*,*) " - eval_vasp_ml.py: Visualize results of VASP ML-FF on the fly learnings"
+      write(*,*) " - vasp2trainset: Generate ML-FF training sets from VASP calculations"
+      write(*,*) " - mlp_quality: Determine quality of MLPs for VASP validation set"
+      write(*,*) "Management:"
+      write(*,*) " - md_long.sh: Automated restart of MD calculations with slurm"
+      write(*,*) " - opt_long.sh: Automated restart of geometry optimizations with slurm"
+      write(*,*) " - ml_long.sh: Automated restart of VASP ML-FF on the fly learnings"
+      write(*,*) " - mace_long.sh: Automated restart of MACE MD trajectories with ASE "
+      write(*,*)
+      stop
+   end if
+end do
+
+!
+!    Print general information and all possible keywords of the program    
+!
 write(*,*)
 write(*,*) "PROGRAM partial_dos: Evaluation of VASP density of states (DOS)"
 write(*,*) " calculations. Element- or atom-resolved DOS can be printed out,"
@@ -31,6 +76,7 @@ write(*,*) " further, one or several certain orbitals can be chosen."
 write(*,*) "The POSCAR and DOSCAR files of a VASP calculation need to be "
 write(*,*) " present, the calculation must be done with the LORBIT=11 command."
 write(*,*) "The following command line arguments can/must be given:"
+write(*,*) " -overview:  print an overview of all scripts and programs in utils4VASP"
 write(*,*) " -element=[list of elements] : which element shall be analyzed."
 write(*,*) "    one or several can be given. State 'all' if all atoms shall be "
 write(*,*) "    incorporated into the DOS evaluation. Examples: -element=Pt or "

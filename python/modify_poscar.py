@@ -15,11 +15,54 @@ import numpy as np
 from numpy import linalg as LA
 from scipy.spatial import distance_matrix
 
+#
+#    only print the overview of utils4VASP scripts/programs and stop
+#
+for arg in sys.argv:
+   if arg == "-overview":
+      print('''
+utils4VASP: Setup and Evaluation of DFT and MLP simulations with VASP
+The following scripts and programs are contained:
+Setup:
+ - gen_incar.py: Generate INCAR file templates for several job types
+ - analyze_poscar.py: Analyze POSCAR, generate KPOINTS and POTCAR
+ - build_alloy.py: Build regular alloy structures of various shapes
+ - modify_poscar.py: Modify POSCAR: multiply, transform, shift, insert etc.
+ - cut_unitcell: Generate surface slab unit cells of arbitrary shape
+ - build_adsorb.py: Place adsorbates on surfaces, set translation, rotation
+ - split_freq: Divide frequency calculations for large molecules
+Evaluation:
+ - modify_xdatcar: Modify trajectory files: multiply, shift, pick etc.
+ - analyze_bulk: Analyze bulk MD trajectories for RDFs, diffusion etc.
+ - analyze_slab: Analyze slab MD trajectories for RDFs, density etc.
+ - check_geoopt.py: Monitor geometry optimizations with selective dynamics
+ - manage_cls: Prepare, evaluate core level energy calculations
+ - eval_bader: Evaluate and visualize Bader charge calculations
+ - eval_stm: Generate STM images with different settings
+ - partial_dos: Plot atom and orbital resolved density of states
+ - manage_neb.py: Setup, monitor and restart NEB calculations
+ML-FF:
+ - mlff_select: Heuristic selection of local reference configurations
+ - eval_vasp_ml.py: Visualize results of VASP ML-FF on the fly learnings
+ - vasp2trainset: Generate ML-FF training sets from VASP calculations
+ - mlp_quality: Determine quality of MLPs for VASP validation set
+Management:
+ - md_long.sh: Automated restart of MD calculations with slurm
+ - opt_long.sh: Automated restart of geometry optimizations with slurm
+ - ml_long.sh: Automated restart of VASP ML-FF on the fly learnings
+ - mace_long.sh: Automated restart of MACE MD trajectories with ASE
+''')
+      sys.exit(0)
+
+#
+#    Print general information and all possible keywords of the program    
+#
 print('''
  This script takes a POSCAR file in direct or cartesian coordinates 
  and performs several different operations on it, depending 
  on the keyword and its specifiers given in the command line. 
  The list of possible options:
+  -overview : Print overview of utils4VASP scripts/programs
   -shift=a,b,c : Shift the unitcell contents along the given components 
      of a vector in direct coordinates along the coordinate axes.
      Example: shift=0.1,0.0,0.5 

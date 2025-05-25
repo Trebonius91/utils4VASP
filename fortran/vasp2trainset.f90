@@ -1,19 +1,24 @@
 !
-!    vasp2trainset: This program takes the output of either an nudged 
-!      elastic band (NEB) calculation or an on-the-fly machine
-!      learning force field (ML-FF) calculation and generates
-!      input files containing structures, energies and gradients
-!      that can be used to fit an artificial neural network (ANN)
-!      potential with the aenet program from atomisticnet on github 
-!      or a MACE foundation model for the system of interest with 
-!      the aenet program from atomisticnet on github 
+!    vasp2trainset: This program takes the output of either a nudged 
+!      elastic band (NEB) calculation, a VASP on-the-fly machine
+!      learning force field (ML-FF) calculation, a VASP ML-FF production run
+!      or a MACE foundation model calculation and generates input files
+!      containing structures, energies and gradients that can be used to fit
+!      an artificial neural network (ANN) potential with the aenet program from
+!      atomisticnet on github or a MACE finetuning model for the system of interest
 !      (see there for details)      
-!    Part of VASP4CLINT
-!     Julien Steffen, 2023 (julien.steffen@fau.de)
+!
+!    Part of utils4vasp
+!
+!     Julien Steffen,     2023 (julien.steffen@fau.de) - main program
+!     Maximilian Bechtel, 2025 (maxi.bechtel@fau.de)   - extension to VASP ML-FF
+!                                                      - production runs
 !
 
 program vasp2trainset
+
 implicit none
+
 integer::i,j,k,inc,inc2,inc3
 logical::eval_neb,eval_mlff,does_exist,eval_md
 character(len=120)::arg
@@ -34,11 +39,57 @@ character(len=150),allocatable::xdat_content(:)
 integer::readstat
 integer::xdat_lines
 integer::nfolders,nelems,natoms,nstrucs,nframes
-real(kind=8)::stress(3,3)
+! real(kind=8)::stress(3,3)
 integer::el_nums(10)
 logical::write_aenet,write_mace
+logical::header
 character(len=2)::el_syms(10)
 
+!
+!    only print the overview of utils4VASP scripts/programs and stop
+!
+do i = 1, command_argument_count()
+   call get_command_argument(i, arg)
+   if (trim(arg)  .eq. "-overview") then
+      write(*,*)
+      write(*,*) "utils4VASP: Setup and Evaluation of DFT and MLP simulations with VASP"
+      write(*,*) "The following scripts and programs are contained:"
+      write(*,*) "Setup:"
+      write(*,*) " - gen_incar.py: Generate INCAR file templates for several job types"
+      write(*,*) " - analyze_poscar.py: Analyze POSCAR, generate KPOINTS and POTCAR"
+      write(*,*) " - build_alloy.py: Build regular alloy structures of various shapes"
+      write(*,*) " - modify_poscar.py: Modify POSCAR: multiply, transform, shift, insert etc."
+      write(*,*) " - cut_unitcell: Generate surface slab unit cells of arbitrary shape"
+      write(*,*) " - build_adsorb.py: Place adsorbates on surfaces, set translation, rotation"
+      write(*,*) " - split_freq: Divide frequency calculations for large molecules"
+      write(*,*) "Evaluation:"
+      write(*,*) " - modify_xdatcar: Modify trajectory files: multiply, shift, pick etc."
+      write(*,*) " - analyze_bulk: Analyze bulk MD trajectories for RDFs, diffusion etc."
+      write(*,*) " - analyze_slab: Analyze slab MD trajectories for RDFs, density etc."
+      write(*,*) " - check_geoopt.py: Monitor geometry optimizations with selective dynamics"
+      write(*,*) " - manage_cls: Prepare, evaluate core level energy calculations"
+      write(*,*) " - eval_bader: Evaluate and visualize Bader charge calculations"
+      write(*,*) " - eval_stm: Generate STM images with different settings"
+      write(*,*) " - partial_dos: Plot atom and orbital resolved density of states"
+      write(*,*) " - manage_neb.py: Setup, monitor and restart NEB calculations"
+      write(*,*) "ML-FF:"
+      write(*,*) " - mlff_select: Heuristic selection of local reference configurations"
+      write(*,*) " - eval_vasp_ml.py: Visualize results of VASP ML-FF on the fly learnings"
+      write(*,*) " - vasp2trainset: Generate ML-FF training sets from VASP calculations"
+      write(*,*) " - mlp_quality: Determine quality of MLPs for VASP validation set"
+      write(*,*) "Management:"
+      write(*,*) " - md_long.sh: Automated restart of MD calculations with slurm"
+      write(*,*) " - opt_long.sh: Automated restart of geometry optimizations with slurm"
+      write(*,*) " - ml_long.sh: Automated restart of VASP ML-FF on the fly learnings"
+      write(*,*) " - mace_long.sh: Automated restart of MACE MD trajectories with ASE "
+      write(*,*)
+      stop
+   end if
+end do
+
+!
+!    Print general information and all possible keywords of the program    
+!
 write(*,*) "PROGRAM vasp2trainset: Transforms the output of a nudged elastic band (NEB)"
 write(*,*) " or an on-the-fly VASP ML-FF generation trajectory to the training set"
 write(*,*) " format needed for either (a) the aenet program from atomisticnet for"
@@ -46,15 +97,18 @@ write(*,*) " an artificial neural network (ANN) potential or (b) the MACE suite 
 write(*,*) " fit one of the MACE foundation models for the system of interest."
 write(*,*) "For NEB calculations, start the program in the main folder where "
 write(*,*) " the frames are stored in subfolders 00,01,02, ..."
-write(*,*) "For ML-FF calculation, start the program where the ML_AB file generated"
-write(*,*) " generated by the on-the-fly learning of interest is located."
+write(*,*) "For ML-FF calculations, start the program where the ML_AB file generated"
+write(*,*) " by the on-the-fly learning of interest is located."
 write(*,*) "The command line argument decides which kind of calculation will be done:"
 write(*,*) " -neb : evaluates a NEB calculation."
 write(*,*) " -ml_ff : evaluates a ML-FF learning calculation."
 write(*,*) " -md_traj=[mode] : picks frames from a VASP trajectory (XDATCAR)"
+write(*,*) " For VASP XDATCAR choose if a NVT or NpT ensemble should be processed"
+write(*,*) " -head: Before each frame a header with 8 lines is assumed (NpT)"
+write(*,*) " default: No header is assumed (NVT)"
 write(*,*) "   If mode = setup, a folder with a POSCAR file will be generated for each"
 write(*,*) "   XDATCAR frame, a VASP single point calculation needs to be done in each"
-write(*,*) "   of the folders (IBRION=-1,NSW=0). "
+write(*,*) "   of the folders (IBRION=-1,NSW=0)."
 write(*,*) "   If mode = eval, the folders with the VASP calculations will be evaluated"
 write(*,*) "   and the training set file(s) will be written with the energy/gradients."  
 write(*,*) " -traj_freq=[number] : For the md_traj (mode setup), only each Nth trajectory"
@@ -73,6 +127,7 @@ write(*,*) " energies, and no information about fixed atoms will be gathered."
 write(*,*) "For the mace option, a single file named [base].xyz containing the training"
 write(*,*) " set files is written, where base is defined by the -name keyword. Further,"
 write(*,*) " header lines are added where the atomic energies can be added later."
+write(*,*) "For an overview of utils4VASP, give the -overview command."
 
 !
 !     If a NEB shall be evaluated
@@ -97,7 +152,7 @@ do i = 1, command_argument_count()
 end do
 
 !
-!     If a VASP MD trajectory shall be evaluated
+!     If a MD trajectory shall be evaluated
 !
 md_mode="xxxx"
 eval_md = .false.
@@ -107,6 +162,19 @@ do i = 1, command_argument_count()
       eval_md = .true.
       read(arg(10:),*) md_mode
    end if
+end do
+
+!
+!     For the case that a MD trajectory shall be evaluated
+!     case 1: Before each frame a header is printed
+!     case 2: Before each frame no header is printed
+!
+header = .false.
+do i = 1, command_argument_count()
+    call get_command_argument(i, arg)
+    if (trim(arg) .eq. "-header") then
+        header = .true.
+    end if
 end do
 
 !
@@ -578,9 +646,21 @@ if (eval_mlff) then
 end if       
 
 if (md_mode .eq. "setup") then
+   write(*,*)
    write(*,*) " md_traj=setup: extract the frames of a XDATCAR file and generate folders"
    write(*,*) "  for subsequent VASP calculations."
    write(*,*)
+
+   if (header .eqv. .true.) then
+      write(*,*) " Before each frame a header with 8 lines containing information about"
+      write(*,*) " the unit cell will be assumed (typical for NpT ensembles with a varying"
+      write(*,*) " unit cell)."
+      write(*,*)
+   else
+      write(*,*) " No header before each frame will be assumed (typical for NVT ensembles)."
+      write(*,*)
+   endif
+
 !
 !    Read in the content of the XDATCAR file
 !
@@ -604,8 +684,15 @@ if (md_mode .eq. "setup") then
    el_nums=0
    read(56,*,iostat=readstat) el_nums
    close(56)
+
    natoms=sum(el_nums)
-   nframes = (xdat_lines)/(natoms+8)
+
+   if (header .eqv. .false.) then
+      nframes = (xdat_lines-7)/(natoms+1)
+   else
+      nframes = (xdat_lines)/(natoms+8)
+   end if
+
    write(*,*) "  Number of atoms: ",natoms
    write(*,*) "  Number of frames: ",nframes
    write(*,*) "  ... completed!"
@@ -637,9 +724,21 @@ if (md_mode .eq. "setup") then
       call system("mkdir "//trim(foldername))
       call chdir(foldername)
       open(unit=57,file="POSCAR",status="replace")
-      do j=(i-1)*(natoms+8)+1,i*(natoms+8)
-         write(57,*) adjustl(trim(xdat_content(j)))
-      end do
+
+      if (header .eqv. .true.) then
+         do j=(i-1)*(natoms+8)+1,i*(natoms+8)
+            write(57,*) adjustl(trim(xdat_content(j)))
+         end do
+
+      else
+         do j = 1,7
+            write(57,*) adjustl(trim(xdat_content(j)))
+         end do
+         do j = 8 + (i-1)*(natoms+1),i*(natoms+1) + 7
+            write(57,*) adjustl(trim(xdat_content(j)))
+         end do
+      end if
+
       close(57)
       call chdir("..")
    end do

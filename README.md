@@ -21,6 +21,9 @@ A description of all scripts/programs as well as an overview of important VASP c
 The scripts and programs are grouped by the area of application (setup, evaluation, ML-FF, management).
 Fortran programs have no file ending, ".py" are Python scripts, ".sh" are Bash shell scripts
 
+The Fortran programs are compiled by the Makefile given in the main directory. 
+Modify it if needed and then type 'make' to build all Fortran programs.
+
 Currently included are:
 
 ## Setup:

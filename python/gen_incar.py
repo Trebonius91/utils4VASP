@@ -563,7 +563,7 @@ ML_MB = 4000  # increase if complex system, decrease if memory problems
 # Number of collected reference configurations (full system screenshots)
 ML_MCONF = 4000  # increase if complex system, decrease if memory problems
 
-# Calculation will not be aborted if ML_MCONF is reached, but configs. are discarded
+# Calculation will not be aborted if ML-MCONF is reached, but configs. are discarded
 ML_LBASIS_DISCARD = .TRUE.
 
 # Cutoff for the distance (two-body) descriptor in Angstroms

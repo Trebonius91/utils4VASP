@@ -598,14 +598,14 @@ mae_energy=0d0
 rmse_energy=0d0
 do i=1,nframes
    mae_energy=mae_energy+abs(energies_ref(i)-energies_ann(i))   
-   rmse_energy=rmse_energy+sqrt((energies_ref(i)-energies_ann(i))**2)
+   rmse_energy=rmse_energy+(energies_ref(i)-energies_ann(i))**2
 end do
-mae_energy=mae_energy/real(nframes)*1000d0
-rmse_energy=rmse_energy/real(nframes)*1000d0
+mae_energy=mae_energy/sum(natoms_list)*1000d0
+rmse_energy=sqrt(rmse_energy/sum(natoms_list))*1000d0
 
 write(*,*) "---------------------------------------------------------"
-write(*,'(a,f13.6,a)') "MAE(energy):",mae_energy,"meV"
-write(*,'(a,f13.6,a)') "RMSE(energy):",rmse_energy,"meV"
+write(*,'(a,f13.6,a)') "MAE(energy):",mae_energy," meV/atom"
+write(*,'(a,f13.6,a)') "RMSE(energy):",rmse_energy," meV/atom"
 
 !
 !     MAE and RMSE for forces, only for selected atoms!
@@ -618,17 +618,17 @@ do i=1,nframes
       do k=1,3
          if (select_all(1,j,i)) then
             mae_forces=mae_forces+abs(gradients_ref(k,j,i)-gradients_ann(k,j,i))
-            rmse_forces=rmse_forces+sqrt((gradients_ref(k,j,i)-gradients_ann(k,j,i))**2)
+            rmse_forces=rmse_forces+(gradients_ref(k,j,i)-gradients_ann(k,j,i))**2
             force_num=force_num+1
          end if
       end do
    end do
 end do
 mae_forces=mae_forces/real(force_num)*1000d0
-rmse_forces=rmse_forces/real(force_num)*1000d0
+rmse_forces=sqrt(rmse_forces/real(force_num))*1000d0
 
-write(*,'(a,f13.6,a)') "MAE(force components):",mae_forces,"meV/Ang."
-write(*,'(a,f13.6,a)') "RMSE(force components):",rmse_forces,"meV/Ang."
+write(*,'(a,f13.6,a)') "MAE(force components):",mae_forces," meV/Ang."
+write(*,'(a,f13.6,a)') "RMSE(force components):",rmse_forces," meV/Ang."
 write(*,*) "---------------------------------------------------------"
 write(*,*)
 

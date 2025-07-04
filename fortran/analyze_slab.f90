@@ -28,7 +28,7 @@ real(kind=8),allocatable::xyz(:,:,:),xyz2(:,:,:) ! all coordinates of the trajec
 character(len=2),allocatable::el_names(:),el_names_read(:) ! symbols of the elements 
 integer,allocatable::el_nums(:)  ! numbers of the elements 
 integer::nelems ! number of elements in the system
-integer::natoms,nframes,frame_first ! number of atoms and frames in the trajectory
+integer::natoms,nframes,frame_first,frame_last ! number of atoms/frames in the trajectory
 real(kind=8)::act_num(3)
 character(len=120)::a120
 character(len=220)::a220
@@ -170,6 +170,7 @@ write(*,*) " -rdf_bins=[number] : Number of bins for RDF evaluation (default: 20
 write(*,*) " -rdf_cutoff=[value]: Cutoff for RDF evalulation (default: 8 Angstrom)"
 write(*,*) " -frame_first=[number] : First trajectory frame that shall be evaluated by "
 write(*,*) "     the script (e.g., in order to skip equilibration parts) (default: 1)"
+write(*,*) " -frame_last=[number] : Last trajectory frame that shall be evaluated."
 write(*,*) " -z_shift=[value] : The z-coordinates of the frames are shifted by the value,"
 write(*,*) "     given in direct coordinates (0 to 1.0)."
 !write(*,*) " -z_val_max=[value] : Usually, the slab is assumed to be located in the lower "
@@ -356,6 +357,19 @@ do i = 1, command_argument_count()
       write(*,*) "The analysis will start from frame ",frame_first
    end if
 end do
+!
+!    If the evaluation shall only go to a certain frame number and skip
+!     the frames thereafter
+!
+frame_last = 0
+do i = 1, command_argument_count()
+   call get_command_argument(i, arg)
+   if (trim(arg(1:12))  .eq. "-frame_last=") then
+      read(arg(13:),*) frame_first
+      write(*,*) "The analysis will end at frame ",frame_last
+   end if
+end do
+
 
 !
 !    Shift the z-coordinates of all atoms in direct coordinates by the 
@@ -873,7 +887,14 @@ write(*,*) "Number of trajectory parts for CLS calculations:",cls_rounds
 write(*,*) "-------------------------------------------------"
 write(*,*)
 
-
+!
+!    If frame_last was determined explicitly and is larger than frame_first: 
+!     set it to the value
+!     else: use the total number of frames for frame_last
+!
+if (frame_last .le. frame_first) then
+   frame_last=nframes 
+end if        
 !
 !    Determine lowest and highest z-values in the coordinates
 !    MOD: Now o to zmax from POSCAR header
@@ -897,9 +918,9 @@ if (write_traj) then
    write(*,*) "Write the trajectory of the system to 'trajectory.xyz'..."     
    open(unit=15,file="trajectory.xyz",status="replace")
    eval_stat=.false.
-   do i=1,nframes 
+   do i=frame_first,frame_last 
       do j=1,10
-         if (real(i)/real(nframes) .gt. real(j)*0.1d0) then
+         if (real(i)/real(frame_last-frame_first) .gt. real(j)*0.1d0) then
             if (.not. eval_stat(j)) then
                write(*,'(a,i4,a)')  "  ... ",j*10,"% done "
                eval_stat(j) = .true.
@@ -948,7 +969,7 @@ if (track_atoms) then
          write(86,*) "# frame No.                 x-coordinate              y-coordinate     &
               &         z-coordinate"
       end if
-      do j=1,nframes
+      do j=frame_first,frame_last
          if (read_dt) then
             write(86,*) time_step*j,xyz(:,track_list(i),j)
          else 
@@ -973,10 +994,10 @@ if (calc_rdf) then
    rdf_sum=0.d0
    neighnum=0.d0
    task_act=0
-   all_tasks=((nelems**2-nelems)/2+nelems)*(nframes-frame_first)
+   all_tasks=((nelems**2-nelems)/2+nelems)*(frame_last-frame_first)
    do l=1,nelems
       do m=l,nelems
-         do i=frame_first,nframes
+         do i=frame_first,frame_last
             task_act=task_act+1
 !
 !    Every 10% of the process, give a status update 
@@ -1040,7 +1061,7 @@ if (calc_rdf) then
             end do
          end do
          do j=1,rdf_bins
-            ngr=nframes-frame_first
+            ngr=frame_last-frame_first
             npart1=el_nums(l)  ! which of both elements?
             npart2=el_nums(m)
             r_act=rdf_binsize*(real(j)+0.5d0)
@@ -1119,7 +1140,7 @@ z_dens = 0.d0
 allocate(z_vals(nbins))
 z_vals=0.d0
 if (use_reaxff) then
-   do i=frame_first,nframes
+   do i=frame_first,frame_last
       do l=1,natoms
          do j=1,nbins-1
             if ((xyz(3,l,i) .ge. zlo+(j-1)*zstep) .and. (xyz(3,l,i) &
@@ -1134,7 +1155,7 @@ if (use_reaxff) then
       end do
    end do
 else         
-   do i=frame_first,nframes
+   do i=frame_first,frame_last
       counter = 1
       do j=1,nelems
          do k=1,el_nums(j)
@@ -1165,8 +1186,8 @@ end do
 write(16,*) "    total  "
 do i=1,nbins-1
    z_vals(i)=zlo+(i-0.5d0)*zstep
-   z_dens_tot(i)=z_dens_tot(i)/((nframes-frame_first)*xlen*ylen*zstep)
-   z_dens(i,:)=z_dens(i,:)/((nframes-frame_first)*xlen*ylen*zstep)
+   z_dens_tot(i)=z_dens_tot(i)/((frame_last-frame_first)*xlen*ylen*zstep)
+   z_dens(i,:)=z_dens(i,:)/((frame_last-frame_first)*xlen*ylen*zstep)
    write(16,*) z_vals(i),z_dens(i,:),z_dens_tot(i)
    
 end do
@@ -1321,7 +1342,7 @@ if (surf_tension) then
    write(*,*)
    write(*,*) "Calculate surface tension ..." 
    task_act=0
-   all_tasks=(nframes-frame_first)
+   all_tasks=(frame_last-frame_first)
    eval_stat=.false.
    if (use_reaxff) then
 
@@ -1423,9 +1444,9 @@ if (calc_diff) then
    end if        
    allocate(xyz2(3,natoms,nframes))
    allocate(pos_diff(natoms*3))
-   allocate(msd_func(nframes-frame_first,nelems))
-   allocate(times(nframes-frame_first))
-   allocate(diff(nframes-frame_first))
+   allocate(msd_func(frame_last-frame_first,nelems))
+   allocate(times(frame_last-frame_first))
+   allocate(diff(frame_last-frame_first))
 
 !
 !    Correct for box images: reintroduce the images for diffusion coefficients! 
@@ -1474,7 +1495,7 @@ if (calc_diff) then
    else 
       stop "Currently only up to three elements possible for diffusion coefficients!"
    end if        
-   do i=1,nframes-frame_first
+   do i=1,frame_last-frame_first
       times(i)=(i-1)*time_step
       pos_diff=0.d0
       do j=1,natoms
@@ -1510,7 +1531,7 @@ if (calc_diff) then
 
    open(unit=17,file="msd_plot.dat",status="replace")
    write(17,*) "# time (fs),   MSD (A^2)"
-   do i=1,nframes-frame_first
+   do i=1,frame_last-frame_first
       if (nelems .eq. 1) then
          write(17,*) times(i),msd_func(i,1)
       end if
@@ -1530,9 +1551,9 @@ if (calc_diff) then
       write(*,*) "Write trajectory centered to unit cell to 'traj_center.xyz' ..."
       open(unit=17,file="traj_center.xyz",status="replace")
       eval_stat=.false.
-      do i=1,nframes
+      do i=frame_first,frame_last
          do j=1,10
-            if (real(i)/real(nframes) .gt. real(j)*0.1d0) then
+            if (real(i)/real(frame_last-frame_first) .gt. real(j)*0.1d0) then
                if (.not. eval_stat(j)) then
                   write(*,'(a,i4,a)')  "  ... ",j*10,"% done "
                   eval_stat(j) = .true.
@@ -1554,7 +1575,7 @@ if (calc_diff) then
 !     based on the last time step!
 !
    do k=1,nelems
-      do i=1,nframes-frame_first
+      do i=1,frame_last-frame_first
          if (diff_2d) then
             diff(i)=msd_func(i,k)/(4.d0*times(i))
          else        
@@ -1562,7 +1583,7 @@ if (calc_diff) then
          end if
       end do
       diff = diff*(1E-10)**2/(1E-15)
-      avg_diff=diff(nframes-frame_first)
+      avg_diff=diff(frame_last-frame_first)
       if (k .eq. 1) then
          write(*,*) "calculated diffusion coefficient, element 1 (m^2/s):",avg_diff
          open(unit=19,file="diff_const_MSD_el1.dat",status="replace")
@@ -1734,7 +1755,7 @@ if (cls_element .ne. "XX") then
    atom_first=sum(el_nums(1:cls_elem_ind-1))+1
    atom_last=sum(el_nums(1:cls_elem_ind))
    call system("mkdir core_levels")
-   slice_size=int((nframes-frame_first)/cls_rounds)
+   slice_size=int((frame_last-frame_first)/cls_rounds)
    rounds: do r=1,cls_rounds
       if (r .le. 9) then
           write(roundname,'(a,i1)') "round",r

@@ -60,9 +60,9 @@ character(len=5),allocatable::track_list_read(:)  ! the indices of atoms to be t
 integer,allocatable::track_list(:)  ! the indices of atoms to be tracked, as integer
 integer::track_num   ! the number of atoms to be tracked
 logical::write_traj,read_dt
-logical::calc_rdf,calc_diff,diff_2d
+logical::calc_rdf,calc_diff,diff_2d,diff_collect
 logical::use_reaxff,el_present
-logical::surf_tension
+logical::surf_tension,dens_elems
 logical::skip_xdat
 logical::eval_stat(10)
 logical::track_atoms 
@@ -158,10 +158,10 @@ write(*,*) "     here, the box dimensions must be given separately in 'box_dims.
 write(*,*) "     with the format 'xlen  ylen  zlen' (one line)"
 write(*,*) " -write_traj : The file 'trajectory.xyz' containing all frames of XDATCAR"
 write(*,*) "     shall be written during the analysis."
+write(*,*) " -dens_elems : The element densities along the z axis shall be calculated."
 write(*,*) " -track_atoms=[list of numbers] : Write time-dependent positions of chosen"
 write(*,*) "     atoms to file. Example: track_atoms=1,78,178"
-write(*,*) " -timestep=[value] : For atom tracking ordiffusion calculations, the time step"
-write(*,*) "     in fs (take longer step if not every step was written during dynamics!)"
+write(*,*) " -dt=[time step in fs]: The time step used for MD simulation, in fs."
 write(*,*) " -dens_bins=[number] : Number of bins for element densities (default: 501)"
 write(*,*) " -rdf : The radial distribution functions for all element combinations  "
 write(*,*) "     shall be calculated. Then, also the total number of neighbors "
@@ -187,7 +187,6 @@ write(*,*) " -cls_rounds=[number]: In how many parts the trajectory shall be div
 write(*,*) "     CLS template generation in each part (default: 1)."
 !write(*,*) " -vib_dens:  the vibrational density of states (IR spectrum without intensities)"
 !write(*,*) "        is calculated from the VACF"
-write(*,*) " -dt=[time step in fs]: The time step used for MD simulation, in fs."
 write(*,*) " -corrt=[time in fs]: Length of the VACF correlation interval to be calculated."
 write(*,*) "       (default: 1000 fs)"
 !write(*,*) " -vib_inter=[number]: The interval in which the IR spectrum is plotted (upper limit)"
@@ -198,6 +197,8 @@ write(*,*) " -tension : calculates the surface tension averaged over all MD fram
 write(*,*) "     For this, the OUTCAR file needs to be present (MD with ISIF=2)"
 write(*,*) " -diffusion : calculates the diffusion coefficient, for each element in the slab"
 write(*,*) "     separately, via the mean square displacement (MSD)."
+write(*,*) " -diff_collect : calculates the diffusion coefficients of each element, treating all"
+write(*,*) "     atoms of them as one effective sum particle."
 write(*,*) " -diff_2d : calculates the 2D-diffusion coefficient along x and y, for each element"
 write(*,*) "     in the slab separately, via the mean square displacement (MSD)."
 
@@ -222,6 +223,17 @@ do i = 1, command_argument_count()
       write_traj = .false.
    end if
 end do
+!
+!    If the densities of elements along the z axis shall be calculated
+!
+dens_elems=.false.
+do i = 1, command_argument_count()
+   call get_command_argument(i, arg)
+   if (trim(arg)  .eq. "-dens_elems") then
+      dens_elems = .true.
+   end if
+end do
+
 !
 !    For bin packing of abundancies/densities along z-axis
 !
@@ -407,7 +419,6 @@ do i = 1, command_argument_count()
       read(arg(14:),*) cls_element
    end if
 end do
-
 !
 !    The number of individual core level shift evaluations
 !
@@ -467,6 +478,21 @@ do i = 1, command_argument_count()
 end do
 
 !
+!    Activates the calculation of collective diffusions, treating all atoms 
+!     of an element together as an effective particle
+!
+
+diff_collect=.false.
+do i = 1, command_argument_count()
+   call get_command_argument(i, arg)
+   if (trim(arg)  .eq. "-diff_collect") then
+      calc_diff=.true.
+      diff_collect=.true.
+   end if
+end do
+
+
+!
 !    Read in the time step in fs
 !
 read_dt = .false.
@@ -476,16 +502,15 @@ if (calc_vacf .or. calc_diff) then
       if (trim(arg(1:4))  .eq. "-dt=") then
          read_dt = .true.
          read(arg(5:32),*) time_step
-         write(*,*) "The time step shall be:",time_step," fs."
+         write(*,*)
+         write(*,'(a,f12.7,a)') " The time step shall be:",time_step," fs."
       end if
    end do
-   read_dt=.true.
 end if
-
 
 if (calc_diff) then
    if (.not. read_dt) then
-      stop "Please set for diffusion a time step with the -timestep=... flag!"
+      stop "Please set for diffusion a time step with the -dt=... flag!"
    end if
 end if        
 
@@ -526,6 +551,25 @@ if ((.not. write_traj) .and. (.not. calc_diff) .and. (.not. calc_rdf) .and. surf
    skip_xdat = .true.
 end if        
 
+!
+!    Foe diffusion calculations, the time step must be set!
+!
+if (calc_diff .and. (time_step .le. 0.0001)) then
+   stop "Please give the MD time step in fs!"
+end if
+
+!
+!     If no job has been chosen, abort the program
+!
+if ((.not. calc_rdf) .and. (.not. write_traj) .and. (.not. dens_elems) &
+          & .and. (.not. track_atoms) .and. (.not. calc_diff) &
+          & .and. (cls_element .eq. "XX")) then
+   write(*,*)
+   write(*,*) "Please choose at least one of the evaluation options!"
+   write(*,*) 
+   stop
+end if
+
 
 !
 !    First, determine the number of lines in the XDATCAR file
@@ -565,7 +609,8 @@ if (use_reaxff) then
 
    open(unit=15,file="box_dims.dat",status="old",iostat=openstat)
    if (openstat .ne. 0) then
-      stop "ERROR! The file 'box_dims.dat' could not been found!"
+      write(*,*) "ERROR! The file 'box_dims.dat' could not been found!"
+      stop
    end if
    read(15,*) xlen,ylen,zlen
    close(15)
@@ -574,7 +619,8 @@ if (use_reaxff) then
 !
    open(unit=14,file="dump.xyz",status="old",iostat=openstat)
    if (openstat .ne. 0) then
-      stop "ERROR! The file 'dump.xyz' could not been found!"
+      write(*,*) "ERROR! The file 'dump.xyz' could not been found!"
+      stop
    end if        
    read(14,*) natoms
    nframes = (dump_lines)/(natoms+2)
@@ -878,12 +924,23 @@ if (write_traj) then
 else
    write(*,*) "No xyz trajectory will be written."
 end if
-
+if (track_atoms) then
+   write(*,*) "The positions of the following atoms will be tracked:"
+   write(*,'(a)',advance="no") "    "
+   do i=1,track_num-1
+      write(*,'(i6,a)',advance="no") track_list(i),", "
+   end do
+   write(*,'(i6,a)') track_list(track_num)
+end if        
 write(*,*) "The first ",frame_first," frames will be skipped!"
-write(*,*) "Number of slices along z-axis for element densities:",nbins
-write(*,'(a,a,a,i3,a)') " CLS will be calculated for element: ",cls_element," (index: ",cls_elem_ind,")"
-write(*,*) "Number of slices along z-axis for CLS calculations:",atom_slices
-write(*,*) "Number of trajectory parts for CLS calculations:",cls_rounds
+if (dens_elems) then
+   write(*,*) "Number of slices along z-axis for element densities:",nbins
+end if
+if (cls_element .ne. "XX") then
+   write(*,'(a,a,a,i3,a)') " CLS will be calculated for element: ",cls_element," (index: ",cls_elem_ind,")"
+   write(*,*) "Number of slices along z-axis for CLS calculations:",atom_slices
+   write(*,*) "Number of trajectory parts for CLS calculations:",cls_rounds
+end if
 write(*,*) "-------------------------------------------------"
 write(*,*)
 
@@ -1494,7 +1551,7 @@ if (calc_diff) then
       allocate(vector1(el_nums(1)*3),vector2(el_nums(2)*3),vector3(el_nums(3)*3))
    else 
       stop "Currently only up to three elements possible for diffusion coefficients!"
-   end if        
+   end if 
    do i=1,frame_last-frame_first
       times(i)=(i-1)*time_step
       pos_diff=0.d0
@@ -1510,21 +1567,84 @@ if (calc_diff) then
          end if        
       end do
       if (nelems .eq. 1) then
-         msd_func(i,1)=dot_product(pos_diff,pos_diff)/natoms
+!
+!     If the collective diffusion coefficient is requested: calculate the net shift of 
+!      all atoms of each element
+!
+         if (diff_collect) then
+            diff_vec=0.d0
+            do k=1,natoms
+               do l=1,3
+                  diff_vec(l)=diff_vec(l)+pos_diff((k-1)*3+l)
+               end do
+            end do  
+            msd_func(i,1)=dot_product(diff_vec,diff_vec)/natoms
+         else        
+            msd_func(i,1)=dot_product(pos_diff,pos_diff)/natoms
+         end if    
       end if
       if (nelems .eq. 2) then
-         vector1 = pos_diff(1:el_nums(1)*3)
-         msd_func(i,1)=dot_product(vector1,vector1)/el_nums(1)
-         vector2 = pos_diff(el_nums(1)*3+1:natoms*3)
-         msd_func(i,2)=dot_product(vector2,vector2)/el_nums(2)
+!
+!     If the collective diffusion coefficient is requested: calculate the net shift of 
+!      all atoms of each element
+!              
+         if (diff_collect) then
+            diff_vec=0.d0     
+            do k=1,el_nums(1)
+               do l=1,3
+                  diff_vec(l)=diff_vec(l)+pos_diff((k-1)*3+l)
+               end do
+            end do   
+            msd_func(i,1)=dot_product(diff_vec,diff_vec)/el_nums(1)
+            diff_vec=0.d0
+            do k=el_nums(1)+1,natoms
+               do l=1,3
+                  diff_vec(l)=diff_vec(l)+pos_diff((k-1)*3+l)
+               end do
+            end do
+            msd_func(i,2)=dot_product(diff_vec,diff_vec)/el_nums(2)
+         else     
+            vector1 = pos_diff(1:el_nums(1)*3)
+            msd_func(i,1)=dot_product(vector1,vector1)/el_nums(1)
+            vector2 = pos_diff(el_nums(1)*3+1:natoms*3)
+            msd_func(i,2)=dot_product(vector2,vector2)/el_nums(2)
+         end if   
       end if
       if (nelems .eq. 3) then
-         vector1 = pos_diff(1:el_nums(1)*3)
-         msd_func(i,1)=dot_product(vector1,vector1)/el_nums(1)
-         vector2 = pos_diff(el_nums(1)*3+1:(el_nums(1)+el_nums(2))*3)
-         msd_func(i,2)=dot_product(vector2,vector2)/el_nums(2)
-         vector3 = pos_diff((el_nums(1)+el_nums(2))*3+1:natoms*3)
-         msd_func(i,3)=dot_product(vector3,vector3)/el_nums(3)
+!
+!     If the collective diffusion coefficient is requested: calculate the net shift of 
+!      all atoms of each element
+!               
+         if (diff_collect) then 
+            diff_vec=0.d0
+            do k=1,el_nums(1)
+               do l=1,3
+                  diff_vec(l)=diff_vec(l)+pos_diff((k-1)*3+l)
+               end do
+            end do
+            msd_func(i,1)=dot_product(diff_vec,diff_vec)/el_nums(1)
+            diff_vec=0.d0
+            do k=el_nums(1)+1,el_nums(1)+el_nums(2)
+               do l=1,3
+                  diff_vec(l)=diff_vec(l)+pos_diff((k-1)*3+l)
+               end do
+            end do
+            msd_func(i,2)=dot_product(diff_vec,diff_vec)/el_nums(2)
+            diff_vec=0.d0
+            do k=el_nums(1)+el_nums(2)+1,natoms
+               do l=1,3
+                  diff_vec(l)=diff_vec(l)+pos_diff((k-1)*3+l)
+               end do
+            end do
+            msd_func(i,3)=dot_product(diff_vec,diff_vec)/el_nums(3)
+         else        
+            vector1 = pos_diff(1:el_nums(1)*3)
+            msd_func(i,1)=dot_product(vector1,vector1)/el_nums(1)
+            vector2 = pos_diff(el_nums(1)*3+1:(el_nums(1)+el_nums(2))*3)
+            msd_func(i,2)=dot_product(vector2,vector2)/el_nums(2)
+            vector3 = pos_diff((el_nums(1)+el_nums(2))*3+1:natoms*3)
+            msd_func(i,3)=dot_product(vector3,vector3)/el_nums(3)
+         end if
       end if
    end do
    write(*,*) " ... done"
@@ -1574,6 +1694,7 @@ if (calc_diff) then
 !     Calculate the diffusion coefficient by calculating the MSD 
 !     based on the last time step!
 !
+   
    do k=1,nelems
       do i=1,frame_last-frame_first
          if (diff_2d) then

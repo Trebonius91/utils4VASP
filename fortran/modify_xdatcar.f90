@@ -95,8 +95,10 @@ write(*,*) "    processed and written out. (DEFAULT: 1)"
 write(*,*) " -pick_frame=[number] : Pick one frame of the XDATCAR file and print"
 write(*,*) "    it to a POSCAR file (POSCAR_pick). Example: -pick_frame=283"
 write(*,*) " -print_xyz : Print each frame to a xyz trajectory: xdat_mod.xyz"
-write(*,*) " -print_last=[number] : Only print the last [number] frames into "
-write(*,*) "    the ordered file formate" 
+write(*,*) " -frame_last=[number] : The number of the last frame to be printed "
+write(*,*) "   (default: last frame of the trajectory)"
+write(*,*) " -frame_first=[number] : The number of the first frame to be printed "
+write(*,*) "   (default: frame No. 1)"
 write(*,*) " -print_npt : Print a NVT trajectory in the NPT format, e.g., for "
 write(*,*) "    subsequent analysis with TRAVIS."
 write(*,*) "One or several of these commands can be executed. The ordering"
@@ -200,22 +202,39 @@ do i = 1, command_argument_count()
 end do
 
 !
-!     Only print the last nframes to the trajectory
+!     Only print frames until frame No frame_last
 !
 print_last=.false.
 frame_last=0
 do i = 1, command_argument_count()
    call get_command_argument(i, arg)
-   if (trim(arg(1:12))  .eq. "-print_last=") then
+   if (trim(arg(1:12))  .eq. "-frame_last=") then
       read(arg(13:),*,iostat=readstat) frame_last
       print_last=.true.
       if (readstat .ne. 0) then
          write(*,*)
-         stop "Check the command -print_last=..., something went wrong!"
+         stop "Check the command -frame_last=..., something went wrong!"
          write(*,*)
       end if
    end if
 end do
+
+!
+!     Start printing from frame No. frame_first
+!
+frame_first=1
+do i = 1, command_argument_count()
+   call get_command_argument(i, arg)
+   if (trim(arg(1:13))  .eq. "-frame_first=") then
+      read(arg(14:),*,iostat=readstat) frame_first
+      if (readstat .ne. 0) then
+         write(*,*)
+         stop "Check the command -frame_first=..., something went wrong!"
+         write(*,*)
+      end if
+   end if
+end do
+
 
 
 if ((.not. shift_cell) .and. (.not. multiply_cell) .and. (.not. pick_frame) .and. &
@@ -320,9 +339,9 @@ end if
 !    From the print-last command, determine the first frame to be written
 !
 if (print_last) then
-   frame_first=nframes-frame_last+1
+   frame_last=frame_last
 else 
-   frame_first=1
+   frame_last=nframes
 end if
 
 !
@@ -618,13 +637,11 @@ end if
 eval_stat = .false.
 if (print_xyz) then
    write(*,*) "Write trajectory in xyz format to file xdat_mod.xyz"
-   if (frame_last .ne. 0) then
-      write(*,'(a,i10,a)') " Only the last ",frame_last," frames will be written."
-   end if
+   write(*,'(a,i10,a,i10,a)') " Frame ",frame_first," to frame ",frame_last," will be written."
    open(unit=34,file="xdat_mod.xyz",status="replace")
-   do i=frame_first,nframes
+   do i=frame_first,frame_last
       do j=1,10
-         if (real(i)/real(nframes-frame_first) .gt. real(j)*0.1d0) then
+         if (real(i)/real(frame_last-frame_first) .gt. real(j)*0.1d0) then
             if (.not. eval_stat(j)) then
                write(*,'(a,i4,a)')  "  ... ",j*10,"% done "
                eval_stat(j) = .true.
@@ -672,13 +689,11 @@ else
    if (shift_cell .or. multiply_cell .or. print_last .or. (read_freq .gt. 1) .or. &
                    & print_npt) then
       write(*,*) "Write trajectory in VASP format to file XDATCAR_mod"
-      if (frame_last .ne. 0) then
-         write(*,'(a,i10,a)') " Only the last ",frame_last," frames will be written."
-      end if
+      write(*,'(a,i10,a,i10,a)') " Frame ",frame_first," to frame ",frame_last," will be written."
       open(unit=34,file="XDATCAR_mod",status="replace")
-      do i=frame_first,nframes
+      do i=frame_first,frame_last
          do j=1,10
-            if (real(i)/real(nframes-frame_first) .gt. real(j)*0.1d0) then
+            if (real(i)/real(frame_last-frame_first) .gt. real(j)*0.1d0) then
                if (.not. eval_stat(j)) then
                   write(*,'(a,i4,a)')  "  ... ",j*10,"% done "
                   eval_stat(j) = .true.

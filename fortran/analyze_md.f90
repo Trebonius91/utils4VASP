@@ -26,6 +26,7 @@ logical::diff_2d   ! if diffusion along a 2d plane shall be considered only
 logical::diff_collect   ! if the collective diffusion of one element 
 logical::read_dt    ! control if the MD time step has been read in
 logical::skip_xdat ! skip the read in of XDATCAR for surface tension
+logical::dens_cube ! if spacially-resolved average element densities are given
 
 real(kind=8)::pi  ! the pi
 integer::analyze_parts ! number of parts of the trajectory to be evaluated
@@ -50,6 +51,7 @@ logical::eval_stat(10)  ! for print out of status for long processes
 integer::all_tasks  ! for print out of status
 integer::cls_elem_ind  ! The number of the element whose structures are picked
 real(kind=8)::xlen,ylen,zlen,zmax  ! sizes of the unit cell
+character(len=20)::dens_mode ! which kind of element density profile 
 real(kind=8)::box_volume  ! volume of the unit cell
 real(kind=8)::factor  ! the global POSCAR scaling factor 
 character(len=2),allocatable::at_names(:)  ! the element symbols
@@ -140,23 +142,33 @@ write(*,*) "The following command line arguments can/must be given (with - sign!
 write(*,*) " -overview:  print an overview of all scripts and programs in utils4VASP"
 write(*,*) " -part_number=[number]: In how many parts the trajectory shall be divided"
 write(*,*) "     and doing all analysis separately for each part."
+write(*,*) " -frame_first=[number] : First trajectory frame that shall be evaluated by "
+write(*,*) "     the script (e.g., in order to skip equilibration parts) (default: 1)"
+write(*,*) " -frame_last=[number] : Last trajectory frame that shall be evaluated."
 write(*,*) " -write_traj : The file 'trajectory.xyz' containing all frames of XDATCAR"
 write(*,*) "     shall be written during the analysis."
-write(*,*) " -dens_elems : The element densities along the z axis shall be calculated."
-write(*,*) " -track_atoms=[list of numbers] : Write time-dependent positions of chosen"
-write(*,*) "     atoms to file. Example: track_atoms=1,78,178"
-write(*,*) " -dt=[time step in fs]: The time step used for MD simulation, in fs."
-write(*,*) " -dens_bins=[number] : Number of bins for element densities (default: 501)"
 write(*,*) " -rdf : The radial distribution functions for all element combinations  "
 write(*,*) "     shall be calculated. Then, also the total number of neighbors "
 write(*,*) "     up to a certain distance will be calculated."
 write(*,*) " -rdf_bins=[number] : Number of bins for RDF evaluation (default: 201)"
 write(*,*) " -rdf_cutoff=[value]: Cutoff for RDF evalulation (default: 8 Angstrom)"
-write(*,*) " -frame_first=[number] : First trajectory frame that shall be evaluated by "
-write(*,*) "     the script (e.g., in order to skip equilibration parts) (default: 1)"
-write(*,*) " -frame_last=[number] : Last trajectory frame that shall be evaluated."
-write(*,*) " -z_shift=[value] : The z-coordinates of the frames are shifted by the value,"
-write(*,*) "     given in direct coordinates (0 to 1.0)."
+write(*,*) " -diffusion : calculates the diffusion coefficient, for each element in the slab"
+write(*,*) "     separately, via the mean square displacement (MSD)."
+write(*,*) " -dt=[time step in fs]: The time step used for MD simulation, in fs."
+write(*,*) " -diff_collect : calculates the diffusion coefficients of each element, treating all"
+write(*,*) "     atoms of them as one effective sum particle."
+write(*,*) " -diff_2d : calculates the 2D-diffusion coefficient along x and y, for each element"
+write(*,*) "     in the slab separately, via the mean square displacement (MSD)."
+write(*,*) " -track_atoms=[list of numbers] : Write time-dependent positions of chosen"
+write(*,*) "     atoms to file. Example: track_atoms=1,78,178"
+write(*,*) " -dens_cube: Write Gaussian cube file with spatially resolved atomic densities."
+write(*,*) "The following keywords are only usefuly for surface slab simulations:"
+write(*,*) " -dens_elems : The element densities along a axis or around a sphere are calculated."
+write(*,*) " -dens_bins=[number] : Number of bins for element densities (default: 501)"
+write(*,*) " -dens_mode=[character] : Decides, along which topology the element densities "
+write(*,*) "     shall be calculated, possible are x, y or z for the coordinate axes or "
+write(*,*) "     sphere_[el], where a sphere around the center of mass of the atoms of the "
+write(*,*) "     chosen element is formed, for example -dens_mode=sphere_Pt (default: z)."
 write(*,*) " -cls_element=[element]: CLS calculation templates will be generated for"
 write(*,*) "     the chosen element."
 write(*,*) " -cls_slices=[number]: How many different slices along the z-coordinate where "
@@ -164,17 +176,8 @@ write(*,*) "     the atom for which CLS shall be calculated is located (near for
 write(*,*) "     surface of the slab (default: 100)."
 write(*,*) " -cls_rounds=[number]: In how many parts the trajectory shall be divided for"
 write(*,*) "     CLS template generation in each part (default: 1)."
-write(*,*) " -corrt=[time in fs]: Length of the VACF correlation interval to be calculated."
-write(*,*) "       (default: 1000 fs)"
 write(*,*) " -tension : calculates the surface tension averaged over all MD frames."
 write(*,*) "     For this, the OUTCAR file needs to be present (MD with ISIF=2)"
-write(*,*) " -diffusion : calculates the diffusion coefficient, for each element in the slab"
-write(*,*) "     separately, via the mean square displacement (MSD)."
-write(*,*) " -diff_collect : calculates the diffusion coefficients of each element, treating all"
-write(*,*) "     atoms of them as one effective sum particle."
-write(*,*) " -diff_2d : calculates the 2D-diffusion coefficient along x and y, for each element"
-write(*,*) "     in the slab separately, via the mean square displacement (MSD)."
-
 
 !
 !    The pi
@@ -381,9 +384,9 @@ do i=1,nframes
 !     move them to values close below zero for better appearance
 !
 
-         if (act_num(k) .gt. z_val_max) then
-            act_num(k) = act_num(k)-1.d0
-         end if        
+!         if (act_num(k) .gt. z_val_max) then
+!            act_num(k) = act_num(k)-1.d0
+!         end if        
 
          if (k .eq. 1) then
             xyz(k,j,i) = act_num(k)*xlen
@@ -542,6 +545,12 @@ do i=1,analyze_parts
    if (cls_element .ne. "XX") then
       call pick_structures(frames_part(i),xyz_part)
    end if
+!
+!    Calculate the spacial densities of all elements
+!
+   if (dens_cube) then
+      call spacial_density(frames_part(i),xyz_part)
+   end if
 
    call chdir("..")
 end do
@@ -650,6 +659,20 @@ do i = 1, command_argument_count()
 end do
 
 !
+!    Along which axis/sphere the element density shall be evaluated
+!
+!
+!    The element for which the CLS shall be calculated
+!
+dens_mode="z"
+do i = 1, command_argument_count()
+   call get_command_argument(i, arg)
+   if (trim(arg(1:11))  .eq. "-dens_mode=") then
+      read(arg(12:),*) dens_mode
+   end if
+end do
+
+!
 !    Track the time-dependent positions of one or several atoms, given
 !    by their indices/numbers in the system
 !    Up to 50 atoms can be chosen
@@ -744,32 +767,6 @@ end do
 
 
 !
-!    Shift the z-coordinates of all atoms in direct coordinates by the
-!      given value
-!
-z_shift = 0.0
-do i = 1, command_argument_count()
-   call get_command_argument(i, arg)
-   if (trim(arg(1:9))  .eq. "-z_shift=") then
-      read(arg(10:),*) z_shift
-      write(*,*) "The z-coordinates (direct) will be shifted by ",z_shift
-   end if
-end do
-!
-!    Correct the z-coordinates of the atoms near the upper edge of the cell
-!    in order to make the appearance of plots nicer
-!
-z_val_max = 0.9d0
-do i = 1, command_argument_count()
-   call get_command_argument(i, arg)
-   if (trim(arg(1:9))  .eq. "-z_val_max=") then
-      read(arg(10:),*) z_shift
-      write(*,*) "Atoms with z-valuzes larger than ",z_val_max," (direct) will be moved by -1."
-   end if
-end do
-
-
-!
 !    The element for which the CLS shall be calculated
 !
 cls_element="XX"
@@ -851,7 +848,18 @@ do i = 1, command_argument_count()
    end if
 end do
 
-
+!
+!    Activates the calculation of spacially-resolved element densities,
+!     written out as Gaussian Cube files
+!
+dens_cube = .false.
+do i = 1, command_argument_count()
+   call get_command_argument(i, arg)
+   if (trim(arg)  .eq. "-dens_cube") then
+      dens_cube = .true.
+   end if
+end do
+write(*,*) "cubbbee",dens_cube
 !
 !    Read in the time step in fs
 !
@@ -1156,6 +1164,8 @@ integer::nframes  ! current local number of frames
 real(kind=8)::xyz(3,natoms,nframes)  ! local part of the trajectory
 integer::nmins
 integer::counter
+integer::eval_dim
+real(kind=8)::normalize
 real(kind=8),allocatable::min_pos(:)
 real(kind=8),allocatable::z_vals(:)
 real(kind=8),allocatable::int_side(:,:),tot_side(:)
@@ -1167,59 +1177,78 @@ real(kind=8)::zlo,zhi,zdiff,zstep  ! borders of z-density bins
 ! 
 allocate(z_dens(nbins,nelems))
 allocate(z_dens_tot(nbins))
-
+!
+!     Do evaluations for the case that a coordinate axis has been chosen
+!      as dimension/topology along which the density shall be evaluated
+!
+if (trim(dens_mode) .eq. "x" .or. trim(dens_mode) .eq. "y" .or. &
+          & trim(dens_mode) .eq. "z") then
 !  
-!    Determine lowest and highest z-values in the coordinates
+!    Determine lowest and highest value of the coordinates along the 
+!     chosen axis
 !    MOD: Now o to zmax from POSCAR header
 !  
-zlo = 0.d0 ! minval(xyz(3,:,:))
-zhi = zlen !maxval(xyz(3,:,:))
-zdiff = zhi-zlo
-zstep = zdiff/(nbins-1)
+   if (trim(dens_mode) .eq. "x") then
+      zlo = 0.d0 
+      zhi = xlen
+      normalize=ylen*zlen
+      eval_dim=1 
+   else if (trim(dens_mode) .eq. "y") then
+      zlo = 0.d0 
+      zhi = ylen
+      normalize=xlen*zlen
+      eval_dim=2 
+   else if (trim(dens_mode) .eq. "z") then
+      zlo = 0.d0 
+      zhi = zlen
+      normalize=xlen*ylen
+      eval_dim=3 
+   end if
+   zdiff = zhi-zlo
+   zstep = zdiff/(nbins-1)
 
 !
-!    Evaluate the distribution of atoms along the z axis
+!    Evaluate the distribution of atoms along the chosen coordinate axis
 !
-write(*,*) "Calculate element density distributions along z-axis..."
-z_dens = 0.d0
-allocate(z_vals(nbins))
-z_vals=0.d0
-do i=1,nframes
-   counter = 1
-   do j=1,nelems
-      do k=1,el_nums(j)
-         do l=1,nbins-1
-            if ((xyz(3,counter,i) .ge. zlo+(l-1)*zstep) .and. (xyz(3,counter,i) &
-                         & .le. zlo+l*zstep)) then
-               z_dens(l,j) = z_dens(l,j) + 1.d0
-
-            end if
+   write(*,*) "Calculate element density distributions along ",trim(dens_mode),"-axis..."
+   z_dens = 0.d0
+   allocate(z_vals(nbins))
+   z_vals=0.d0
+   do i=1,nframes
+      counter = 1
+      do j=1,nelems
+         do k=1,el_nums(j)
+            do l=1,nbins-1
+               if ((xyz(eval_dim,counter,i) .ge. zlo+(l-1)*zstep) .and. (xyz(eval_dim,counter,i) &
+                            & .le. zlo+l*zstep)) then
+                  z_dens(l,j) = z_dens(l,j) + 1.d0
+               end if
+            end do
+            counter = counter + 1
          end do
-         counter = counter + 1
       end do
    end do
-end do
-do i=1,nbins-1
-   z_dens_tot(i)=sum(z_dens(i,:))
-end do
-write(*,*) " completed!"
+   do i=1,nbins-1
+      z_dens_tot(i)=sum(z_dens(i,:))
+   end do
+   write(*,*) " completed!"
 !
 !    Write the density profile to file
 !
-open(unit=16,file="dens_elems.dat",status="replace")
-write(16,'(a)',advance="no") " # z-coordinate    "
-do i=1,nelems
-   write(16,'(a,a)',advance="no") el_names(i),"      "
-end do
-write(16,*) "    total  "
-do i=1,nbins-1
-   z_vals(i)=zlo+(i-0.5d0)*zstep
-   z_dens_tot(i)=z_dens_tot(i)/((frame_last-frame_first)*xlen*ylen*zstep)
-   z_dens(i,:)=z_dens(i,:)/((frame_last-frame_first)*xlen*ylen*zstep)
-   write(16,*) z_vals(i),z_dens(i,:),z_dens_tot(i)
+   open(unit=16,file="dens_elems.dat",status="replace")
+   write(16,'(a)',advance="no") " # z-coordinate    "
+   do i=1,nelems
+      write(16,'(a,a)',advance="no") el_names(i),"      "
+   end do
+   write(16,*) "    total  "
+   do i=1,nbins-1
+      z_vals(i)=zlo+(i-0.5d0)*zstep
+      z_dens_tot(i)=z_dens_tot(i)/((frame_last-frame_first)*normalize*zstep)
+      z_dens(i,:)=z_dens(i,:)/((frame_last-frame_first)*normalize*zstep)
+      write(16,*) z_vals(i),z_dens(i,:),z_dens_tot(i)
 
-end do
-close(16)
+   end do
+   close(16)
 !
 !    Determine surface concentrations of elements: The parts of the density profile
 !     between the last local minimum and the asymptotics as well as of the penultimate
@@ -1229,121 +1258,122 @@ close(16)
 !    First, determine the local minima of the total density profile
 !
 
-if (nelems .gt. 1) then
-   write(*,*)
-   if (nelems .eq. 2) then
-      write(*,*) "Surface concentration of the second element will be determined..."
-   else if (nelems .eq. 3) then
-      write(*,*) "Surface concentrations of the second and third element will be determined..."
-   end if
-   allocate(min_pos(nbins))
-   allocate(int_side(2,nelems))
-   allocate(tot_side(2))
-   int_side=0.d0
-   tot_side=0.d0
-   nmins=0
-   do i=14,nbins-13
+   if (nelems .gt. 1) then
+      write(*,*)
+      if (nelems .eq. 2) then
+         write(*,*) "Surface concentration of the second element will be determined..."
+      else if (nelems .eq. 3) then
+         write(*,*) "Surface concentrations of the second and third element will be determined..."
+      end if
+      allocate(min_pos(nbins))
+      allocate(int_side(2,nelems))
+      allocate(tot_side(2))
+      int_side=0.d0
+      tot_side=0.d0
+      nmins=0
+      do i=14,nbins-13
 !
 !     Only evaluate parts of the profile that are high enough to event processing of
 !     numerical noise or detached atoms
 !
-      if (z_dens_tot(i) .gt. 0.01d0) then
-         if ((z_dens_tot(i) .lt. z_dens_tot(i+1)) .and. (z_dens_tot(i) .lt. z_dens_tot(i-1)) &
-          &   .and. (z_dens_tot(i) .lt. z_dens_tot(i+2)) .and. (z_dens_tot(i) .lt. z_dens_tot(i-2)) &
-          &   .and. (z_dens_tot(i) .lt. z_dens_tot(i+3)) .and. (z_dens_tot(i) .lt. z_dens_tot(i-3)) &
-          &   .and. (z_dens_tot(i) .lt. z_dens_tot(i+4)) .and. (z_dens_tot(i) .lt. z_dens_tot(i-4)) &
-          &   .and. (z_dens_tot(i) .lt. z_dens_tot(i+5)) .and. (z_dens_tot(i) .lt. z_dens_tot(i-5)) &
-          &   .and. (z_dens_tot(i) .lt. z_dens_tot(i+6)) .and. (z_dens_tot(i) .lt. z_dens_tot(i-6)) &
-          &   .and. (z_dens_tot(i) .lt. z_dens_tot(i+7)) .and. (z_dens_tot(i) .lt. z_dens_tot(i-7)) &
-          &   .and. (z_dens_tot(i) .lt. z_dens_tot(i+8)) .and. (z_dens_tot(i) .lt. z_dens_tot(i-8)) &
-          &   .and. (z_dens_tot(i) .lt. z_dens_tot(i+9)) .and. (z_dens_tot(i) .lt. z_dens_tot(i-9)) &
-          &   .and. (z_dens_tot(i) .lt. z_dens_tot(i+10)) .and. (z_dens_tot(i) .lt. z_dens_tot(i-10)) &
-          &   .and. (z_dens_tot(i) .lt. z_dens_tot(i+11)) .and. (z_dens_tot(i) .lt. z_dens_tot(i-11)) &
-          &   .and. (z_dens_tot(i) .lt. z_dens_tot(i+12)) .and. (z_dens_tot(i) .lt. z_dens_tot(i-12)) &
-          &   .and. (z_dens_tot(i) .lt. z_dens_tot(i+13)) .and. (z_dens_tot(i) .lt. z_dens_tot(i-13))) then
-            nmins=nmins+1
-             min_pos(nmins)=z_vals(i)
+         if (z_dens_tot(i) .gt. 0.01d0) then
+            if ((z_dens_tot(i) .lt. z_dens_tot(i+1)) .and. (z_dens_tot(i) .lt. z_dens_tot(i-1)) &
+             &   .and. (z_dens_tot(i) .lt. z_dens_tot(i+2)) .and. (z_dens_tot(i) .lt. z_dens_tot(i-2)) &
+             &   .and. (z_dens_tot(i) .lt. z_dens_tot(i+3)) .and. (z_dens_tot(i) .lt. z_dens_tot(i-3)) &
+             &   .and. (z_dens_tot(i) .lt. z_dens_tot(i+4)) .and. (z_dens_tot(i) .lt. z_dens_tot(i-4)) &
+             &   .and. (z_dens_tot(i) .lt. z_dens_tot(i+5)) .and. (z_dens_tot(i) .lt. z_dens_tot(i-5)) &
+             &   .and. (z_dens_tot(i) .lt. z_dens_tot(i+6)) .and. (z_dens_tot(i) .lt. z_dens_tot(i-6)) &
+             &   .and. (z_dens_tot(i) .lt. z_dens_tot(i+7)) .and. (z_dens_tot(i) .lt. z_dens_tot(i-7)) &
+             &   .and. (z_dens_tot(i) .lt. z_dens_tot(i+8)) .and. (z_dens_tot(i) .lt. z_dens_tot(i-8)) &
+             &   .and. (z_dens_tot(i) .lt. z_dens_tot(i+9)) .and. (z_dens_tot(i) .lt. z_dens_tot(i-9)) &
+             &   .and. (z_dens_tot(i) .lt. z_dens_tot(i+10)) .and. (z_dens_tot(i) .lt. z_dens_tot(i-10)) &
+             &   .and. (z_dens_tot(i) .lt. z_dens_tot(i+11)) .and. (z_dens_tot(i) .lt. z_dens_tot(i-11)) &
+             &   .and. (z_dens_tot(i) .lt. z_dens_tot(i+12)) .and. (z_dens_tot(i) .lt. z_dens_tot(i-12)) &
+             &   .and. (z_dens_tot(i) .lt. z_dens_tot(i+13)) .and. (z_dens_tot(i) .lt. z_dens_tot(i-13))) then
+                nmins=nmins+1
+                min_pos(nmins)=z_vals(i)
+            end if
          end if
+      end do
+
+
+      open(unit=39,file="surf_concs.dat",status="replace")
+      write(39,'(a)') "# This file contains the concentration of different elements in the "
+      write(39,'(a)') "# surface region of the SCALMS system analyzed with analyzed_scalms"
+      if (nelems .eq. 2) then
+         write(39,'(a)') "# The concentration of the second element is calculated."
+      else if (nelems .eq. 3) then
+         write(39,'(a)') "# The concentrations of the second and the third element are calculated."
       end if
-   end do
-
-
-   open(unit=39,file="surf_concs.dat",status="replace")
-   write(39,'(a)') "# This file contains the concentration of different elements in the "
-   write(39,'(a)') "# surface region of the SCALMS system analyzed with analyzed_scalms"
-   if (nelems .eq. 2) then
-      write(39,'(a)') "# The concentration of the second element is calculated."
-   else if (nelems .eq. 3) then
-      write(39,'(a)') "# The concentrations of the second and the third element are calculated."
-   end if
-   z_min_lower1 = min_pos(1)
-   z_min_lower2 = min_pos(2)
-   z_min_upper1 = min_pos(nmins)
-   z_min_upper2 = min_pos(nmins-1)
+      z_min_lower1 = min_pos(1)
+      z_min_lower2 = min_pos(2)
+      z_min_upper1 = min_pos(nmins)
+      z_min_upper2 = min_pos(nmins-1)
 !
 !     Now calculate the integrated densities
 !
-   do i=1,nbins
+      do i=1,nbins
 !
 !     Outside the outer minima
 !
-      if (nelems .eq. 2) then
-         if (z_vals(i) .lt. z_min_lower1)then ! .or. z_vals(i) .gt. z_min_upper1) then
-            int_side(1,1)=int_side(1,1)+z_dens(i,2)
-            tot_side(1)=tot_side(1)+z_dens_tot(i)
+         if (nelems .eq. 2) then
+            if (z_vals(i) .lt. z_min_lower1)then ! .or. z_vals(i) .gt. z_min_upper1) then
+               int_side(1,1)=int_side(1,1)+z_dens(i,2)
+               tot_side(1)=tot_side(1)+z_dens_tot(i)
+            end if
+         else if (nelems .eq. 3) then
+            if (z_vals(i) .lt. z_min_lower1 .or. z_vals(i) .gt. z_min_upper1) then
+               int_side(1,1)=int_side(1,1)+z_dens(i,2)
+               int_side(1,2)=int_side(1,2)+z_dens(i,3)
+               tot_side(1)=tot_side(1)+z_dens_tot(i)
+            end if
          end if
-      else if (nelems .eq. 3) then
-         if (z_vals(i) .lt. z_min_lower1 .or. z_vals(i) .gt. z_min_upper1) then
-            int_side(1,1)=int_side(1,1)+z_dens(i,2)
-            int_side(1,2)=int_side(1,2)+z_dens(i,3)
-            tot_side(1)=tot_side(1)+z_dens_tot(i)
-         end if
-      end if
 !
 !     Outside the penultimate minima
 !
-      if (nelems .eq. 2) then
-         if (z_vals(i) .lt. z_min_lower2 .and. z_vals(i) .gt. z_min_lower1) then
-            int_side(2,1)=int_side(2,1)+z_dens(i,2)
-            tot_side(2)=tot_side(2)+z_dens_tot(i)
+         if (nelems .eq. 2) then
+            if (z_vals(i) .lt. z_min_lower2 .and. z_vals(i) .gt. z_min_lower1) then
+               int_side(2,1)=int_side(2,1)+z_dens(i,2)
+               tot_side(2)=tot_side(2)+z_dens_tot(i)
+            end if
+            if (z_vals(i) .gt. z_min_upper2 .and. z_vals(i) .lt. z_min_upper1) then
+               int_side(2,1)=int_side(2,1)+z_dens(i,2)
+               tot_side(2)=tot_side(2)+z_dens_tot(i)
+            end if
+         else if (nelems .eq. 3) then
+            if (z_vals(i) .lt. z_min_lower2 .and. z_vals(i) .gt. z_min_lower1) then
+               int_side(2,1)=int_side(2,1)+z_dens(i,2)
+               int_side(2,2)=int_side(2,2)+z_dens(i,3)
+               tot_side(2)=tot_side(2)+z_dens_tot(i)
+            end if
+            if (z_vals(i) .gt. z_min_upper2 .and. z_vals(i) .lt. z_min_upper1) then
+               int_side(2,1)=int_side(2,1)+z_dens(i,2)
+               int_side(2,2)=int_side(2,2)+z_dens(i,3)
+               tot_side(2)=tot_side(2)+z_dens_tot(i)
+            end if
          end if
-         if (z_vals(i) .gt. z_min_upper2 .and. z_vals(i) .lt. z_min_upper1) then
-            int_side(2,1)=int_side(2,1)+z_dens(i,2)
-            tot_side(2)=tot_side(2)+z_dens_tot(i)
-         end if
-      else if (nelems .eq. 3) then
-         if (z_vals(i) .lt. z_min_lower2 .and. z_vals(i) .gt. z_min_lower1) then
-            int_side(2,1)=int_side(2,1)+z_dens(i,2)
-            int_side(2,2)=int_side(2,2)+z_dens(i,3)
-            tot_side(2)=tot_side(2)+z_dens_tot(i)
-         end if
-         if (z_vals(i) .gt. z_min_upper2 .and. z_vals(i) .lt. z_min_upper1) then
-            int_side(2,1)=int_side(2,1)+z_dens(i,2)
-            int_side(2,2)=int_side(2,2)+z_dens(i,3)
-            tot_side(2)=tot_side(2)+z_dens_tot(i)
-         end if
-      end if
-   end do
+      end do
 !
 !     Print concentrations to file
 !
-   write(39,'(a,f14.8,a,f14.8,a)') "# Second element, below z=",z_min_lower1, &
-               & " A and above z=",z_min_upper1," A (%):"
-   write(39,*) int_side(1,1)/(tot_side(1))*100d0
-   write(39,'(a,f14.8,a,f14.8,a)') "# Second element, below z=",z_min_lower2, &
-               & " A and above z=",z_min_upper2," A (%):"
-   write(39,*) int_side(2,1)/(tot_side(2))*100d0
-   if (nelems .eq. 3) then
-      write(39,'(a,f14.8,a,f14.8,a)') "# Third element, below z=",z_min_lower1, &
-               & " A and above z=",z_min_upper1," A (%):"
-      write(39,*) int_side(1,2)/(tot_side(1))*100d0
-      write(39,'(a,f14.8,a,f14.8,a)') "# Third element, below z=",z_min_lower2, &
-               & " A and above z=",z_min_upper2," A (%):"
-      write(39,*) int_side(2,2)/(tot_side(2))*100d0
+      write(39,'(a,f14.8,a,f14.8,a)') "# Second element, below z=",z_min_lower1, &
+                  & " A and above z=",z_min_upper1," A (%):"
+      write(39,*) int_side(1,1)/(tot_side(1))*100d0
+      write(39,'(a,f14.8,a,f14.8,a)') "# Second element, below z=",z_min_lower2, &
+                  & " A and above z=",z_min_upper2," A (%):"
+      write(39,*) int_side(2,1)/(tot_side(2))*100d0
+      if (nelems .eq. 3) then
+         write(39,'(a,f14.8,a,f14.8,a)') "# Third element, below z=",z_min_lower1, &
+                  & " A and above z=",z_min_upper1," A (%):"
+         write(39,*) int_side(1,2)/(tot_side(1))*100d0
+         write(39,'(a,f14.8,a,f14.8,a)') "# Third element, below z=",z_min_lower2, &
+                  & " A and above z=",z_min_upper2," A (%):"
+         write(39,*) int_side(2,2)/(tot_side(2))*100d0
+      end if
+      close(39)
+      write(*,*) "done!"
+      write(*,*) "File 'surf_concs.dat' with concentrations was written."
    end if
-   close(39)
-   write(*,*) "done!"
-   write(*,*) "File 'surf_concs.dat' with concentrations was written."
 end if
 
 end subroutine calculate_densities
@@ -1845,9 +1875,209 @@ if (cls_element .ne. "XX") then
    write(*,*) "Files 'active_examples.xyz/.XDATCAR' with active atom positions written "
    write(*,*) "  to core_levels/round...."
 end if
-
-
 end subroutine pick_structures
+
+
+      
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!    SUBROUTINE SPACIAL_DENSITY
+!    Calculate the averaged three-dimensional elemental 
+!    density of all elements and write them into a 
+!    Gaussian cube file, usable for visualization with VMD
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+      
+subroutine spacial_density(nframes,xyz)
+use analyze_md_mod
+implicit none 
+integer::i,j,k,l
+integer::nframes  ! current local number of frames
+real(kind=8)::xyz(3,natoms,nframes)  ! local part of the trajectory
+integer::i1,j1,k1,i_new,j_new,k_new
+integer::gridx_act,gridy_act,gridz_act
+integer::gridx,gridy,gridz
+integer::stepx,stepy,stepz
+real(kind=8)::distance
+integer::inc,elnumber
+real(kind=8)::a2bohr
+character(len=30)::cube_name
+real(kind=8),allocatable::dens_3d(:,:,:,:)
+
+a2bohr=1.8897259886d0
+
+write(*,*) "Calculate the spatially resolved element densities!"
+!
+!     Determine number grid points per dimension
+!
+
+gridx=100
+gridy=100
+gridz=100
+allocate(dens_3d(nelems,gridx,gridy,gridz))
+dens_3d=0.d0
+
+!
+!    For 3D element densities, determine number of steps around current position
+!    One Angstrom around
+!
+!if (.not. npt_traj) then
+stepx=int(gridx/xlen)
+stepy=int(gridy/ylen)
+stepz=int(gridz/zlen)
+!else 
+!   stepx=int(gridx/a_lens(nframes))
+!   stepy=int(gridy/b_lens(nframes))
+!   stepz=int(gridz/c_lens(nframes))
+!end if      
+!
+!    Convert back to direct coordinates 
+!
+!if (.not. npt_traj) then
+   do i=1,nframes
+      do j=1,natoms
+         xyz(1,j,i) = xyz(1,j,i)/xlen
+         xyz(2,j,i) = xyz(2,j,i)/ylen
+         xyz(3,j,i) = xyz(3,j,i)/zlen
+      end do
+   end do
+!else
+!   do i=1,nframes
+!      do j=1,natoms
+!         xyz(1,j,i) = xyz(1,j,i)/a_lens(i)
+!         xyz(2,j,i) = xyz(2,j,i)/b_lens(i)
+!         xyz(3,j,i) = xyz(3,j,i)/c_lens(i)
+!      end do
+!   end do
+!end if
+
+
+
+!
+!     Remove corrections of box images, project all atoms into central unit cell
+!
+do i=1,nframes
+   do j=1,natoms
+!
+!     Correct the x component
+!
+      do while(xyz(1,j,i) .gt. 1.d0)
+         xyz(1,j,i)=xyz(1,j,i)-1.d0
+      end do
+      do while(xyz(1,j,i) .lt. 0.d0)
+         xyz(1,j,i)=xyz(1,j,i)+1.d0
+      end do
+!
+!     Correct the y component
+!
+      do while(xyz(2,j,i) .gt. 1.d0)
+         xyz(2,j,i)=xyz(2,j,i)-1.d0
+      end do
+      do while(xyz(2,j,i) .lt. 0.d0)
+         xyz(2,j,i)=xyz(2,j,i)+1.d0
+      end do
+!
+!     Correct the z component
+!
+      do while(xyz(3,j,i) .gt. 1.d0)
+         xyz(3,j,i)=xyz(3,j,i)-1.d0
+      end do
+      do while(xyz(3,j,i) .lt. 0.d0)
+         xyz(3,j,i)=xyz(3,j,i)+1.d0
+      end do
+   end do
+end do
+!     Now assign all atoms in each frame to one of the 3D bins
+!
+do i=frame_first,nframes
+   inc=0
+   do j=1,nelems
+      do k=1,el_nums(j)
+         inc=inc+1
+         gridx_act=ceiling(xyz(1,inc,i)*gridx)
+         gridy_act=ceiling(xyz(2,inc,i)*gridy)
+         gridz_act=ceiling(xyz(3,inc,i)*gridz)-1
+         do i1=-stepx,stepx
+            do j1=-stepy,stepy
+               do k1=-stepz,stepz
+                  distance=i1**2+j1**2+k1**2
+                  i_new=gridx_act+i1
+                  if (i_new .gt. gridx) then
+                     i_new=i_new-gridx
+                  else if (i_new .lt. 1) then
+                     i_new=i_new+gridx
+                  end if
+                  j_new=gridy_act+j1
+                  if (j_new .gt. gridy) then
+                     j_new=j_new-gridy
+                  else if (j_new .lt. 1) then
+                     j_new=j_new+gridy
+                  end if
+                  k_new=gridz_act+k1
+                  if (k_new .gt. gridz) then
+                     k_new=k_new-gridz
+                  else if (k_new .lt. 1) then
+                     k_new=k_new+gridz
+                  end if
+
+                  dens_3d(j,i_new,j_new,k_new)= &
+                          & dens_3d(j,i_new,j_new,k_new)+exp(-(distance)/2.d0)
+               end do
+            end do
+         end do
+      end do
+   end do
+end do
+!
+!     Write the header of the cube file
+!
+do i=1,nelems
+   write(cube_name,'(a,a,a)') "density_",trim(el_names(i)),".cube"
+   write(*,*) "Write density of ",trim(el_names(i))," to file ",cube_name
+   open(unit=45,file=cube_name,status="replace")
+   write(45,'(a)') "utils4VASP CUBE FILE"
+   write(45,'(a,a)') "Contains spatially resolved density of element:",el_names(i)
+   write(45,*) natoms,0d0,0.d0,0d0
+!   if (.not. npt_traj) then
+      write(45,*) gridx,xlen/gridx*a2bohr,0.d0,0.d0
+      write(45,*) gridy,0.d0,ylen/gridy*a2bohr,0.d0
+      write(45,*) gridz,0.d0,0.d0,zlen/gridz*a2bohr
+!   else
+!      write(45,*) gridx,a_lens(1)/gridx*a2bohr,0.d0,0.d0
+!      write(45,*) gridy,0.d0,b_lens(1)/gridy*a2bohr,0.d0
+!      write(45,*) gridz,0.d0,0.d0,c_lens(1)/gridz*a2bohr
+!   end if
+   inc=0
+   do j=1,nelems
+      do k=1,el_nums(j)
+         inc=inc+1
+         call elem(el_names(j),elnumber)
+!         if (.not. npt_traj) then
+            write(45,*) elnumber,real(elnumber),xyz(1,inc,nframes)*xlen*a2bohr,xyz(2,inc,nframes)* &
+                           & ylen*a2bohr,xyz(3,inc,nframes)*zlen*a2bohr
+!         else
+!            write(45,*) elnumber,real(elnumber),xyz(1,inc,nframes)*a_lens(1)*a2bohr,xyz(2,inc,nframes)* &
+!                           & b_lens(1)*a2bohr,xyz(3,inc,nframes)*c_lens(1)*a2bohr
+!         end if
+      end do
+   end do
+   write(45,*) 1,48
+!
+!    Write the volumetric data in the cube file
+!
+   do j=1,gridx
+      do k=1,gridy
+         do l=1,gridz
+            write(45,'(f20.10)',advance="no") dens_3d(i,j,k,l)
+            if (modulo(l,6) .eq. 5) then
+               write(45,*) " "
+            end if
+         end do
+         write(45,*) " "
+      end do
+   end do
+   close(45)
+end do
+
+end subroutine spacial_density
 
 subroutine replace_text (s,text,rep,outs)
 CHARACTER(*)        :: s,text,rep
@@ -1862,3 +2092,58 @@ END DO
 
 return 
 end subroutine replace_text
+
+
+!
+!     subroutine elem: read in character with element symbol and
+!       give out the number
+!
+!     part of QMDFF
+!
+subroutine elem(key1, nat)
+IMPLICIT DOUBLE PRECISION (A-H,O-Z)
+CHARACTER(len=*)::KEY1
+CHARACTER(len=2)::ELEMNT(107),E
+
+DATA ELEMNT/'h ','he', &
+ & 'li','be','b ','c ','n ','o ','f ','ne', &
+ & 'na','mg','al','si','p ','s ','cl','ar', &
+ & 'k ','ca','sc','ti','v ','cr','mn','fe','co','ni','cu', &
+ & 'zn','ga','ge','as','se','br','kr', &
+ & 'rb','sr','y ','zr','nb','mo','tc','ru','rh','pd','ag', &
+ & 'cd','in','sn','sb','te','i ','xe', &
+ & 'cs','ba','la','ce','pr','nd','pm','sm','eu','gd','tb','dy', &
+ & 'ho','er','tm','yb','lu','hf','ta','w ','re','os','ir','pt', &
+ & 'au','hg','tl','pb','bi','po','at','rn', &
+ & 'fr','ra','ac','th','pa','u ','np','pu','am','cm','bk','cf','xx', &
+ & 'fm','md','cb','xx','xx','xx','xx','xx'/
+
+nat=0
+e='  '
+do i=1,len(key1)
+   if (key1(i:i).ne.' ') L=i
+end do
+k=1
+DO J=1,L
+   if (k.gt.2) exit
+   N=ICHAR(key1(J:J))
+   if (n.ge.ichar('A') .and. n.le.ichar('Z') ) then
+      e(k:k)=char(n+ICHAR('a')-ICHAR('A'))
+      k=k+1
+   end if
+   if (n.ge.ichar('a') .and. n.le.ichar('z') ) then
+      e(k:k)=key1(j:j)
+      k=k+1
+   end if
+end do
+
+DO I=1,107
+   if (e.eq.elemnt(i)) then
+      NAT=I
+      RETURN
+   END IF
+END DO
+
+return
+end subroutine elem
+

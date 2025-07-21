@@ -52,6 +52,7 @@ integer::all_tasks  ! for print out of status
 integer::cls_elem_ind  ! The number of the element whose structures are picked
 real(kind=8)::xlen,ylen,zlen,zmax  ! sizes of the unit cell
 character(len=20)::dens_mode ! which kind of element density profile 
+real(kind=8)::dens_depth  ! depth of the slab surface region (concentrations)
 real(kind=8)::box_volume  ! volume of the unit cell
 real(kind=8)::factor  ! the global POSCAR scaling factor 
 character(len=2),allocatable::at_names(:)  ! the element symbols
@@ -80,6 +81,8 @@ character(len=220)::a220
 character(len=1)::atest
 character(len=150)::arg,cdum
 logical::ana_present ! if the current analysis folder exists
+real(kind=8),allocatable::xlens(:),ylens(:),zlens(:) ! NpT unit cell sizes
+real(kind=8),allocatable::xlens_p(:),ylens_p(:),zlens_p(:) ! ... for call of subroutines
 integer::readstat,openstat
 integer::counter,endl 
 real(kind=8)::scale_dum
@@ -169,6 +172,8 @@ write(*,*) " -dens_mode=[character] : Decides, along which topology the element 
 write(*,*) "     shall be calculated, possible are x, y or z for the coordinate axes or "
 write(*,*) "     sphere_[el], where a sphere around the center of mass of the atoms of the "
 write(*,*) "     chosen element is formed, for example -dens_mode=sphere_Pt (default: z)."
+write(*,*) " -dens_depth=[value] : How many Angstroms below the slab surface the surface "
+write(*,*) "     concentration of elements shall be determined (default: 5.0)"
 write(*,*) " -cls_element=[element]: CLS calculation templates will be generated for"
 write(*,*) "     the chosen element."
 write(*,*) " -cls_slices=[number]: How many different slices along the z-coordinate where "
@@ -289,8 +294,16 @@ do i=1,nelems
       counter = counter +1
    end do
 end do
+!
+!    If it is a NpT trajectory, allocate the arrays for time-dependent 
+!    unit cell sizes
+!
 if (npt_format) then
    nframes = (xdat_lines - 7)/(natoms+8)
+   allocate(xlens(nframes),ylens(nframes),zlens(nframes))
+   xlens(1)=xlen
+   ylens(1)=ylen
+   zlens(1)=zlen
 else        
    nframes = (xdat_lines - 7)/(natoms+1)
 end if
@@ -328,9 +341,13 @@ do i=1,nframes
    end do
    read(14,*)
    if (npt_format) then
-      do j=1,7
-         read(14,*)
-      end do
+      read(14,*)
+      read(14,*) xlens(i),rdum1,rdum2
+      read(14,*) rdum1,ylens(i),rdum2
+      read(14,*) rdum1,rdum2,zlens(i)
+      read(14,*)
+      read(14,*)
+      read(14,*)
    end if        
    do j=1,natoms 
       read(14,'(a)') a120
@@ -366,28 +383,14 @@ do i=1,nframes
          end do
          do 
             if (act_num(k) < 0d0) then
-!
-!    Special case: move atoms near the lower border to negative values
-!
-!
-               if (act_num(k) >= -0.2d0) then
-                  exit 
-               end if        
                act_num(k) = act_num(k) + 1d0   
             else      
                exit
             end if   
          end do
 !
-!     We assume that the bulk is located in the lower half of the simulation
-!     cell. If atoms go through the lower x-y surface z-values near 1, 
-!     move them to values close below zero for better appearance
+!     Convert to cartesian coordinates
 !
-
-!         if (act_num(k) .gt. z_val_max) then
-!            act_num(k) = act_num(k)-1.d0
-!         end if        
-
          if (k .eq. 1) then
             xyz(k,j,i) = act_num(k)*xlen
          end if
@@ -477,9 +480,29 @@ end if
 frame_shift=0
 do i=1,analyze_parts
    if (allocated(xyz_part)) deallocate(xyz_part)
+   if (allocated(xlens_p)) deallocate(xlens_p)
+   if (allocated(ylens_p)) deallocate(ylens_p) 
+   if (allocated(zlens_p)) deallocate(zlens_p)
    allocate(xyz_part(3,natoms,frames_part(i)))
+   allocate(xlens_p(frames_part(i)))
+   allocate(ylens_p(frames_part(i)))
+   allocate(zlens_p(frames_part(i)))
    do j=1,frames_part(i)
       xyz_part(:,:,j)=xyz(:,:,frame_first-1+j+frame_shift)
+      if (npt_format) then
+!
+!    For NpT trajectories: transfer the time-dependent unit cell size
+!    to the evaluation parts as well!
+!
+         xlens_p(j)=xlens(frame_first-1+j+frame_shift)
+         ylens_p(j)=ylens(frame_first-1+j+frame_shift)
+         zlens_p(j)=zlens(frame_first-1+j+frame_shift)
+      else
+         xlens_p(j)=xlen
+         ylens_p(j)=ylen
+         zlens_p(j)=zlen
+      end if   
+            
    end do
    frame_shift=frame_shift+frames_part(i)
 !
@@ -505,6 +528,7 @@ do i=1,analyze_parts
    inquire(file=trim(folder_name),exist=ana_present)
    if (ana_present) call system ("rm -r "//trim(folder_name))
    call system ("mkdir "//trim(folder_name))
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
 !    Now call the calculation parts if they are ordered
 ! 
@@ -537,7 +561,7 @@ do i=1,analyze_parts
 !    Calculate the self-diffusion coefficients for all elements
 !
    if (calc_diff) then
-      call calculate_diffusion(frames_part(i),xyz_part)
+      call calculate_diffusion(frames_part(i),xyz_part,xlens_p,ylens_p,zlens_p)
    end if
 !
 !    Pick structures with placed atoms of chosen element (CLS)
@@ -549,9 +573,9 @@ do i=1,analyze_parts
 !    Calculate the spacial densities of all elements
 !
    if (dens_cube) then
-      call spacial_density(frames_part(i),xyz_part)
+      call spacial_density(frames_part(i),xyz_part,xlens_p,ylens_p,zlens_p)
    end if
-
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
    call chdir("..")
 end do
 
@@ -584,8 +608,6 @@ if (write_traj) then
    write(*,*) " completed!"
    write(*,*)
 end if
-
-
 
 write(*,*)
 write(*,*) "analyze_md ended normally..."
@@ -672,6 +694,18 @@ do i = 1, command_argument_count()
    end if
 end do
 
+!
+!    Read in the time step in fs
+!
+dens_depth = 5.0
+do i = 1, command_argument_count()
+   call get_command_argument(i, arg)
+   if (trim(arg(1:12))  .eq. "-dens_depth=") then
+      read(arg(13:),*) dens_depth
+      write(*,*)
+      write(*,'(a,f12.7,a)') " The slab surface region shall be:",dens_depth," Ang."
+   end if
+end do
 !
 !    Track the time-dependent positions of one or several atoms, given
 !    by their indices/numbers in the system
@@ -859,7 +893,6 @@ do i = 1, command_argument_count()
       dens_cube = .true.
    end if
 end do
-write(*,*) "cubbbee",dens_cube
 !
 !    Read in the time step in fs
 !
@@ -1172,6 +1205,9 @@ real(kind=8),allocatable::int_side(:,:),tot_side(:)
 real(kind=8)::z_min_lower1,z_min_lower2,z_min_upper1,z_min_upper2
 real(kind=8),allocatable::z_dens(:,:),z_dens_tot(:)
 real(kind=8)::zlo,zhi,zdiff,zstep  ! borders of z-density bins 
+integer::slab_edge_lo,slab_edge_hi  ! the total elongation of the slab
+integer::slab_int_depth  ! the width of dens_depth in bin multiples
+real(kind=8),allocatable::concs_depth(:)  ! concentrations in dens_depth
 !
 !     Allocate arrays for total and element-wise densities
 ! 
@@ -1299,7 +1335,9 @@ if (trim(dens_mode) .eq. "x" .or. trim(dens_mode) .eq. "y" .or. &
 
       open(unit=39,file="surf_concs.dat",status="replace")
       write(39,'(a)') "# This file contains the concentration of different elements in the "
-      write(39,'(a)') "# surface region of the SCALMS system analyzed with analyzed_scalms"
+      write(39,'(a)') "# surface region of the slab system analyzed with analyzed_md"
+      write(39,*)
+
       if (nelems .eq. 2) then
          write(39,'(a)') "# The concentration of the second element is calculated."
       else if (nelems .eq. 3) then
@@ -1354,6 +1392,61 @@ if (trim(dens_mode) .eq. "x" .or. trim(dens_mode) .eq. "y" .or. &
          end if
       end do
 !
+!     Second method for surface concentration determination: integrate regions
+!     on both sides of the slab that are up to a given distance below the 
+!     surface
+!
+!     First determine total elongation of the slab
+!
+      slab_int_depth=int(dens_depth/zdiff*real(nbins))
+!
+!     The lower side of the slab
+!
+      do i=1,nbins
+         if (z_dens_tot(i) .gt. 1E-10) then
+            slab_edge_lo = i
+            exit
+         end if         
+      end do
+      if (slab_edge_lo .eq. 1) then
+         write(*,*) "The slab has no vacuum below it!"    
+         write(*,*) "Please shift the slab first with modify_xdatcar!"
+         stop 
+      end if   
+!
+!     The upper side of the slab
+!
+      do i=nbins,1,-1
+         if (z_dens_tot(i) .gt. 1E-10) then
+            slab_edge_hi = i
+            exit
+         end if
+      end do
+      if (slab_edge_lo .eq. nbins) then
+         write(*,*) "The slab has no vacuum above it!"   
+         write(*,*) "Please shift the slab first with modify_xdatcar!"
+         stop
+      end if   
+!
+!     Abort if the integration range is too deep (lower and upper edges overlap)
+!
+      if ((slab_edge_lo+slab_int_depth) .ge. (slab_edge_hi-slab_int_depth)) then
+         write(*,*) "Lower and upper edge regions of the slab overlap!"
+         write(*,*) "Please choose a smaller -dens_depth parameter!"
+         stop
+      end if        
+
+!
+!     Now sum up the total and relative concentrations in the side region
+!
+      allocate(concs_depth(nelems+1))
+      do i=slab_edge_lo,slab_edge_lo+slab_int_depth
+         concs_depth(1)=concs_depth(1)+z_dens_tot(i)
+         do j=1,nelems
+            concs_depth(j+1)=concs_depth(j+1)+z_dens(i,j)
+         end do
+      end do
+!
 !     Print concentrations to file
 !
       write(39,'(a,f14.8,a,f14.8,a)') "# Second element, below z=",z_min_lower1, &
@@ -1370,6 +1463,15 @@ if (trim(dens_mode) .eq. "x" .or. trim(dens_mode) .eq. "y" .or. &
                   & " A and above z=",z_min_upper2," A (%):"
          write(39,*) int_side(2,2)/(tot_side(2))*100d0
       end if
+      write(39,*)
+      write(39,*)
+      write(39,*) "# In the following, the concentrations of all elements in the "
+      write(39,'(a,f12.6,a)') " # region near the slab surface (defined as ",dens_depth," Angstrom"
+      write(39,*) "# below the outer edges of the slab (both sides)) are given."
+      do i=1,nelems
+         write(39,'(a,i1,a,a,a,f12.6,a)') " * Element ",i, "(",trim(el_names(i)),&
+                      & "): ",concs_depth(i+1)/concs_depth(1)*100.0," %"
+      end do 
       close(39)
       write(*,*) "done!"
       write(*,*) "File 'surf_concs.dat' with concentrations was written."
@@ -1491,13 +1593,14 @@ end subroutine surface_tension
 !    in the system from mean-displacements of atoms
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-subroutine calculate_diffusion(nframes,xyz)
+subroutine calculate_diffusion(nframes,xyz,xlens,ylens,zlens)
 use analyze_md_mod
 implicit none
 integer::i,j,k,l
 integer::nframes  ! current local number of frames
 real(kind=8)::xyz(3,natoms,nframes)  ! local part of the trajectory
 real(kind=8)::xyz2(3,natoms,nframes)  ! transformed local trajectory
+real(kind=8)::xlens(nframes),ylens(nframes),zlens(nframes)  ! the NpT unit cells
 real(kind=8),allocatable::vector1(:),vector2(:),vector3(:),pos_diff(:)
 real(kind=8),allocatable::vector4(:),vector5(:)
 real(kind=8),allocatable::diff(:),times(:),msd_func(:,:)
@@ -1521,33 +1624,36 @@ allocate(diff(nframes))
 !
 write(*,*) "Part1: Correct for box images ..."
 xyz2=xyz
+!
+!    Distinguish between NpT and NVT trajectories! (unit cell shapes)
+!
 do i=1,nframes-1
    do j=1,natoms
 !     Correct the x component
 !
-      do while ((xyz2(1,j,i+1) - xyz2(1,j,i)) .gt. xlen/2d0)
-         xyz2(1,j,i+1)=xyz2(1,j,i+1)-xlen
+      do while ((xyz2(1,j,i+1) - xyz2(1,j,i)) .gt. xlens(i)/2d0)
+         xyz2(1,j,i+1)=xyz2(1,j,i+1)-xlens(i)
       end do
-      do while ((xyz2(1,j,i+1) - xyz2(1,j,i)) .lt. -xlen/2d0)
-         xyz2(1,j,i+1)=xyz2(1,j,i+1)+xlen
+      do while ((xyz2(1,j,i+1) - xyz2(1,j,i)) .lt. -xlens(i)/2d0)
+         xyz2(1,j,i+1)=xyz2(1,j,i+1)+xlens(i)
       end do
 !
 !     Correct the y component
 !
-      do while ((xyz2(2,j,i+1) - xyz2(2,j,i)) .gt. ylen/2d0)
-         xyz2(2,j,i+1)=xyz2(2,j,i+1)-ylen
+      do while ((xyz2(2,j,i+1) - xyz2(2,j,i)) .gt. ylens(i)/2d0)
+         xyz2(2,j,i+1)=xyz2(2,j,i+1)-ylens(i)
       end do
-      do while ((xyz2(2,j,i+1) - xyz2(2,j,i)) .lt. -ylen/2d0)
-         xyz2(2,j,i+1)=xyz2(2,j,i+1)+ylen
+      do while ((xyz2(2,j,i+1) - xyz2(2,j,i)) .lt. -ylens(i)/2d0)
+         xyz2(2,j,i+1)=xyz2(2,j,i+1)+ylens(i)
       end do
 !
 !     Correct the z component
 !
-      do while ((xyz2(3,j,i+1) - xyz2(3,j,i)) .gt. zlen/2d0)
-         xyz2(3,j,i+1)=xyz2(3,j,i+1)-zlen
+      do while ((xyz2(3,j,i+1) - xyz2(3,j,i)) .gt. zlens(i)/2d0)
+         xyz2(3,j,i+1)=xyz2(3,j,i+1)-zlens(i)
       end do
-      do while ((xyz2(3,j,i+1) - xyz2(3,j,i)) .lt. -zlen/2d0)
-         xyz2(3,j,i+1)=xyz2(3,j,i+1)+zlen
+      do while ((xyz2(3,j,i+1) - xyz2(3,j,i)) .lt. -zlens(i)/2d0)
+         xyz2(3,j,i+1)=xyz2(3,j,i+1)+zlens(i)
       end do
    end do
 end do
@@ -1886,12 +1992,13 @@ end subroutine pick_structures
 !    Gaussian cube file, usable for visualization with VMD
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
       
-subroutine spacial_density(nframes,xyz)
+subroutine spacial_density(nframes,xyz,xlens,ylens,zlens)
 use analyze_md_mod
 implicit none 
 integer::i,j,k,l
 integer::nframes  ! current local number of frames
 real(kind=8)::xyz(3,natoms,nframes)  ! local part of the trajectory
+real(kind=8)::xlens(nframes),ylens(nframes),zlens(nframes) ! unit cells
 integer::i1,j1,k1,i_new,j_new,k_new
 integer::gridx_act,gridy_act,gridz_act
 integer::gridx,gridy,gridz
@@ -1919,37 +2026,19 @@ dens_3d=0.d0
 !    For 3D element densities, determine number of steps around current position
 !    One Angstrom around
 !
-!if (.not. npt_traj) then
-stepx=int(gridx/xlen)
-stepy=int(gridy/ylen)
-stepz=int(gridz/zlen)
-!else 
-!   stepx=int(gridx/a_lens(nframes))
-!   stepy=int(gridy/b_lens(nframes))
-!   stepz=int(gridz/c_lens(nframes))
-!end if      
+stepx=int(gridx/xlens(nframes))
+stepy=int(gridy/ylens(nframes))
+stepz=int(gridz/zlens(nframes))
 !
 !    Convert back to direct coordinates 
 !
-!if (.not. npt_traj) then
-   do i=1,nframes
-      do j=1,natoms
-         xyz(1,j,i) = xyz(1,j,i)/xlen
-         xyz(2,j,i) = xyz(2,j,i)/ylen
-         xyz(3,j,i) = xyz(3,j,i)/zlen
-      end do
+do i=1,nframes
+   do j=1,natoms
+      xyz(1,j,i) = xyz(1,j,i)/xlens(i)
+      xyz(2,j,i) = xyz(2,j,i)/ylens(i)
+      xyz(3,j,i) = xyz(3,j,i)/zlens(i)
    end do
-!else
-!   do i=1,nframes
-!      do j=1,natoms
-!         xyz(1,j,i) = xyz(1,j,i)/a_lens(i)
-!         xyz(2,j,i) = xyz(2,j,i)/b_lens(i)
-!         xyz(3,j,i) = xyz(3,j,i)/c_lens(i)
-!      end do
-!   end do
-!end if
-
-
+end do
 
 !
 !     Remove corrections of box images, project all atoms into central unit cell
@@ -2050,13 +2139,8 @@ do i=1,nelems
       do k=1,el_nums(j)
          inc=inc+1
          call elem(el_names(j),elnumber)
-!         if (.not. npt_traj) then
-            write(45,*) elnumber,real(elnumber),xyz(1,inc,nframes)*xlen*a2bohr,xyz(2,inc,nframes)* &
-                           & ylen*a2bohr,xyz(3,inc,nframes)*zlen*a2bohr
-!         else
-!            write(45,*) elnumber,real(elnumber),xyz(1,inc,nframes)*a_lens(1)*a2bohr,xyz(2,inc,nframes)* &
-!                           & b_lens(1)*a2bohr,xyz(3,inc,nframes)*c_lens(1)*a2bohr
-!         end if
+         write(45,*) elnumber,real(elnumber),xyz(1,inc,nframes)*xlens(1)*a2bohr,xyz(2,inc,nframes)* &
+                        & ylens(1)*a2bohr,xyz(3,inc,nframes)*zlens(1)*a2bohr
       end do
    end do
    write(45,*) 1,48

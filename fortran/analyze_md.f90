@@ -170,8 +170,8 @@ write(*,*) " -dens_elems : The element densities along a axis or around a sphere
 write(*,*) " -dens_bins=[number] : Number of bins for element densities (default: 501)"
 write(*,*) " -dens_mode=[character] : Decides, along which topology the element densities "
 write(*,*) "     shall be calculated, possible are x, y or z for the coordinate axes or "
-write(*,*) "     sphere_[el], where a sphere around the center of mass of the atoms of the "
-write(*,*) "     chosen element is formed, for example -dens_mode=sphere_Pt (default: z)."
+write(*,*) "     sphere:[el1,...], where a sphere around the center of mass of the atoms of the "
+write(*,*) "     chosen element(s) is formed, for example -dens_mode=sphere:Pt,H (default: z)."
 write(*,*) " -dens_depth=[value] : How many Angstroms below the slab surface the surface "
 write(*,*) "     concentration of elements shall be determined (default: 5.0)"
 write(*,*) " -cls_element=[element]: CLS calculation templates will be generated for"
@@ -1208,6 +1208,13 @@ real(kind=8)::zlo,zhi,zdiff,zstep  ! borders of z-density bins
 integer::slab_edge_lo,slab_edge_hi  ! the total elongation of the slab
 integer::slab_int_depth  ! the width of dens_depth in bin multiples
 real(kind=8),allocatable::concs_depth(:)  ! concentrations in dens_depth
+character(len=2)::el_eval_list(20)  ! the elements to be set to COM
+integer::el_index(10) ! reference elements for spherical analysis
+integer::el_eval_num  ! number of reference elements
+real(kind=8)::com_act(3)  ! the center of mass in the current frame
+real(kind=8)::diff_vec(3)  ! distance between COM and any atom
+real(kind=8)::diff_len  ! absolute value of the distance vector
+integer::readstat ! status of read in files
 !
 !     Allocate arrays for total and element-wise densities
 ! 
@@ -1279,8 +1286,8 @@ if (trim(dens_mode) .eq. "x" .or. trim(dens_mode) .eq. "y" .or. &
    write(16,*) "    total  "
    do i=1,nbins-1
       z_vals(i)=zlo+(i-0.5d0)*zstep
-      z_dens_tot(i)=z_dens_tot(i)/((frame_last-frame_first)*normalize*zstep)
-      z_dens(i,:)=z_dens(i,:)/((frame_last-frame_first)*normalize*zstep)
+      z_dens_tot(i)=z_dens_tot(i)/((nframes)*normalize*zstep)
+      z_dens(i,:)=z_dens(i,:)/((nframes)*normalize*zstep)
       write(16,*) z_vals(i),z_dens(i,:),z_dens_tot(i)
 
    end do
@@ -1476,8 +1483,143 @@ if (trim(dens_mode) .eq. "x" .or. trim(dens_mode) .eq. "y" .or. &
       write(*,*) "done!"
       write(*,*) "File 'surf_concs.dat' with concentrations was written."
    end if
-end if
+!
+!     Do evaluations if spherical densities around center of masses of elements
+!     shall be calculated
+!
+else if (trim(dens_mode(:7)) .eq. "sphere:") then
+!
+!     Determine the width of a density bin: half elongation of the simulation cell
+!     in the shortest dimension!
+!
+   zdiff = min(xlen,ylen,zlen)/2.d0
+   zstep = zdiff/(nbins-1)
+!
+!     Extract the reference elements
+!
+   el_eval_list="XX"
+   el_eval_num=0
+   read(dens_mode(8:),*,iostat=readstat) el_eval_list
+   do i=1,20
+      if (el_eval_list(i) .eq. "XX") exit
+      el_eval_num=el_eval_num+1
+   end do
 
+!
+!     Check if the requested element is part of the system
+!
+   el_index=0
+   do j=1,el_eval_num
+      do i=1,nelems
+         if (trim(el_eval_list(j)) .eq. trim(el_names(i))) then
+            el_index(j)=i
+         end if        
+      end do
+      if (el_index(j) .eq. 0) then
+         write(*,*) "The element ",trim(el_eval_list(j)), &
+                   & "assigned by -dens_mode is not part of the system!"
+         stop
+      end if    
+   end do
+
+   write(*,*) "Calculate element density distributions along the center of mass"
+   write(*,'(a)',advance="no") " of the elements: "
+   do i=1,el_eval_num
+      write(*,'(a,a)',advance="no") el_eval_list(i)," "
+   end do
+   write(*,*)
+!
+!     Now loop through all MD steps, calculate the center of mass of the 
+!      selected element atoms and calculate their surroundings
+!
+   z_dens=0.d0
+   do i=1,nframes
+      com_act=0.d0
+      do j=1,el_eval_num
+         do k=1,el_nums(el_index(j))
+            com_act=com_act+xyz(:,sum(el_nums(:el_index(j)-1))+k,i)
+         end do 
+      end do
+      do j=1,el_eval_num
+         com_act=com_act/el_nums(el_index(j))
+      end do         
+!
+!     Go through all atoms in the system (including the COM element), calculate
+!     distances of atoms to COM (corrected by image flags) and sort them into
+!     element-resolved bins
+!
+      counter=1
+      do j=1,nelems
+        
+         do k=1,el_nums(j)
+            diff_vec=xyz(:,counter,i)-com_act
+!
+!     Correct the x component
+!
+            do while (abs(diff_vec(1)) .gt. xlen/2.d0)
+               diff_vec(1)=diff_vec(1)-sign(xlen,diff_vec(1))
+            end do
+
+!
+!     Correct the y component
+!
+            do while (abs(diff_vec(2)) .gt. ylen/2.d0)
+               diff_vec(2)=diff_vec(2)-sign(ylen,diff_vec(2))
+            end do
+
+!
+!     Correct the z component
+!
+            do while (abs(diff_vec(3)) .gt. zlen/2.d0)
+               diff_vec(3)=diff_vec(3)-sign(zlen,diff_vec(3))
+            end do
+!
+!     Now assign each atom to one bin, depending of its distance to the COM
+!
+            diff_len=sqrt(dot_product(diff_vec,diff_vec))
+            do l=1,nbins-1
+               if ((diff_len .ge. (l-1)*zstep) .and. (diff_len .le. l*zstep)) then
+                  z_dens(l,j) = z_dens(l,j) + 1.d0
+               end if            
+            end do
+            counter = counter+1
+         end do
+      end do
+   end do
+!
+!     Normalize the plot according to the volume of the sphere layers
+!
+   do i=1,nbins
+      z_dens(i,:)=z_dens(i,:)/(nframes*4.d0/3.d0*pi*((i*zstep)**3-((i-1)*zstep)**3))
+   end do
+!
+!     Calculate the sum density of elements
+!
+   do i=1,nbins-1
+      z_dens_tot(i)=sum(z_dens(i,:))
+   end do
+
+!
+!    Write the density profile to file
+!
+   open(unit=16,file="dens_elems_sphere.dat",status="replace")
+   write(16,'(a)',advance="no") " # radius (A)    "
+   do i=1,nelems
+      write(16,'(a,a)',advance="no") el_names(i),"      "
+   end do
+   write(16,*) "    total  "
+   do i=1,nbins-1
+      write(16,*) (i-0.5d0)*zstep,z_dens(i,:),z_dens_tot(i)
+   end do
+   close(16)
+
+   write(*,*) "done!"
+   write(*,*) "File 'dens_elems_sphere.dat' with sphere densities was written."
+else
+   write(*,*) "Please give one of the valid -dens_mode commands for -dens_elems!"
+   stop
+end if
+        
 end subroutine calculate_densities
 
 

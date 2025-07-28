@@ -472,6 +472,30 @@ else
    frames_part(1)=frame_last-frame_first
 end if
 !
+!    For surface concentrations: write them into global file
+!
+if (dens_elems .and. (analyze_parts .gt. 1)) then
+   open(unit=47,file="surf_concs_layer.dat",status="replace")
+   write(47,*) "# This file contains the surface concentrations of elements, "
+   write(47,*) "# measured in the first two layers of the surface (w.r.t. the "
+   write(47,*) "# total element density), in percent."
+   write(47,'(a)',advance="no") " # Part    "
+   do i=1,nelems
+      write(47,'(a,a,a,a)',advance="no") trim(el_names(i))," (layer1)   ",trim(el_names(i))," (layer2)   "
+   end do
+   write(47,*)
+   open(unit=48,file="surf_concs_depth.dat",status="replace")
+   write(48,*) "# This file contains the surface concentrations of elements, "
+   write(48,'(a,f12.6,a)') " # measured in the region up to ",dens_depth," Ang. below the "
+   write(48,*) "# slab surfaces, in percent."
+   write(48,'(a)',advance="no") " # Part    "
+   do i=1,nelems
+      write(48,'(a,a)',advance="no") trim(el_names(i)),"                "
+   end do
+   write(48,*)
+end if        
+
+!
 !    Now loop over all parts of the trajectory and do all
 !    assigned evaluations for each part! 
 !    Call all subroutines and only give the current part 
@@ -537,6 +561,8 @@ do i=1,analyze_parts
 !    Calculate the element densities along the chosen axis
 !
    if (dens_elems) then
+      write(47,'(i5)',advance="no") i
+      write(48,'(i5)',advance="no") i
       call calculate_densities(frames_part(i),xyz_part)
    end if
 !
@@ -579,7 +605,10 @@ do i=1,analyze_parts
    call chdir("..")
 end do
 
-
+if (dens_elems .and. (analyze_parts .gt. 1)) then
+   close(47)
+   close(48)
+end if    
 !
 !    Write the trajectory in xyz format to file 
 !
@@ -1446,13 +1475,29 @@ if (trim(dens_mode) .eq. "x" .or. trim(dens_mode) .eq. "y" .or. &
 !
 !     Now sum up the total and relative concentrations in the side region
 !
+      if (allocated(concs_depth)) deallocate(concs_depth)
       allocate(concs_depth(nelems+1))
+      concs_depth=0.d0
+!
+!     Upper side of the slab
+!
       do i=slab_edge_lo,slab_edge_lo+slab_int_depth
          concs_depth(1)=concs_depth(1)+z_dens_tot(i)
          do j=1,nelems
             concs_depth(j+1)=concs_depth(j+1)+z_dens(i,j)
          end do
       end do
+!
+!     Lower side of the slab
+!
+      do i=slab_edge_hi,slab_edge_hi-slab_int_depth,-1
+         concs_depth(1)=concs_depth(1)+z_dens_tot(i)
+         do j=1,nelems
+            concs_depth(j+1)=concs_depth(j+1)+z_dens(i,j)
+         end do
+      end do
+
+
 !
 !     Print concentrations to file
 !
@@ -1478,7 +1523,9 @@ if (trim(dens_mode) .eq. "x" .or. trim(dens_mode) .eq. "y" .or. &
       do i=1,nelems
          write(39,'(a,i1,a,a,a,f12.6,a)') " * Element ",i, "(",trim(el_names(i)),&
                       & "): ",concs_depth(i+1)/concs_depth(1)*100.0," %"
+         write(48,'(f15.7,a)',advance="no") concs_depth(i+1)/concs_depth(1)*100.0," "
       end do 
+      write(48,*)
       close(39)
       write(*,*) "done!"
       write(*,*) "File 'surf_concs.dat' with concentrations was written."

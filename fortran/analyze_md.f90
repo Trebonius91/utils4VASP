@@ -25,6 +25,7 @@ logical::calc_diff  ! if the element self-diffusion coefficients shall be calc.
 logical::diff_2d   ! if diffusion along a 2d plane shall be considered only
 logical::diff_collect   ! if the collective diffusion of one element 
 logical::read_dt    ! control if the MD time step has been read in
+logical::calc_stable  ! determines the stability of a system
 logical::skip_xdat ! skip the read in of XDATCAR for surface tension
 logical::dens_cube ! if spacially-resolved average element densities are given
 
@@ -55,6 +56,7 @@ character(len=20)::dens_mode ! which kind of element density profile
 real(kind=8)::dens_depth  ! depth of the slab surface region (concentrations)
 real(kind=8)::box_volume  ! volume of the unit cell
 real(kind=8)::factor  ! the global POSCAR scaling factor 
+real(kind=8)::bond_tol  ! tolerance factor for bond breaking
 character(len=2),allocatable::at_names(:)  ! the element symbols
 integer::natoms ! number of atoms in system
 integer::nelems  ! number of elements in system
@@ -83,6 +85,8 @@ character(len=150)::arg,cdum
 logical::ana_present ! if the current analysis folder exists
 real(kind=8),allocatable::xlens(:),ylens(:),zlens(:) ! NpT unit cell sizes
 real(kind=8),allocatable::xlens_p(:),ylens_p(:),zlens_p(:) ! ... for call of subroutines
+character(len=2)::el_eval_list(20)  ! the elements to be set to COM (density mode)
+integer::el_eval_num  ! number of elements for the COM (density mode)
 integer::readstat,openstat
 integer::counter,endl 
 real(kind=8)::scale_dum
@@ -136,37 +140,48 @@ end do
 !
 !    Print general information and all possible keywords of the program    
 !
+write(*,*)
 write(*,*) "PROGRAM analyze_md: Evaluation of VASP DFT/MLIP trajectories"
 write(*,*) " trajectories of bulk systems and surface slabs."
 write(*,*) "A trajectory can either be evaluates as a whole (results in folder"
 write(*,*) " 'analysis') or in several parts (results in folders analysis_part[i])"
 write(*,*) "The file XDATCAR must be present!"
 write(*,*) "The following command line arguments can/must be given (with - sign!):"
+write(*,*)
+write(*,*) "General settings and evaluation modes:"
 write(*,*) " -overview:  print an overview of all scripts and programs in utils4VASP"
 write(*,*) " -part_number=[number]: In how many parts the trajectory shall be divided"
 write(*,*) "     and doing all analysis separately for each part."
-write(*,*) " -frame_first=[number] : First trajectory frame that shall be evaluated by "
-write(*,*) "     the script (e.g., in order to skip equilibration parts) (default: 1)"
-write(*,*) " -frame_last=[number] : Last trajectory frame that shall be evaluated."
-write(*,*) " -write_traj : The file 'trajectory.xyz' containing all frames of XDATCAR"
-write(*,*) "     shall be written during the analysis."
 write(*,*) " -rdf : The radial distribution functions for all element combinations  "
 write(*,*) "     shall be calculated. Then, also the total number of neighbors "
 write(*,*) "     up to a certain distance will be calculated."
-write(*,*) " -rdf_bins=[number] : Number of bins for RDF evaluation (default: 201)"
-write(*,*) " -rdf_cutoff=[value]: Cutoff for RDF evalulation (default: 8 Angstrom)"
+write(*,*) " -dens_elems : The element densities along a axis or around a sphere are calculated."
 write(*,*) " -diffusion : calculates the diffusion coefficient, for each element in the slab"
 write(*,*) "     separately, via the mean square displacement (MSD)."
 write(*,*) " -dt=[time step in fs]: The time step used for MD simulation, in fs."
+write(*,*) " -track_atoms=[list of numbers] : Write time-dependent positions of chosen"
+write(*,*) "     atoms to file. Example: track_atoms=1,78,178"
+write(*,*) " -dens_cube: Write Gaussian cube file with spatially resolved atomic densities."
+write(*,*) " -dft_element=[element]: DFT calculation templates (POSCAR) will be generated for"
+write(*,*) "     the chosen element for representative parts of the trajectory/the system."
+write(*,*) " -tension : calculates the surface tension averaged over all MD frames."
+write(*,*) "     For this, the OUTCAR file needs to be present (MD with ISIF=2)"
+write(*,*) " -stability : Determines if all bonds in the system are stable, and, if not,"
+write(*,*) "     which bond broke first after which time."
+write(*,*)
+write(*,*) "List of additional options that can/must be added for certain evaluation modes:"
+write(*,*) " -frame_first=[number] : First trajectory frame that shall be evaluated by "
+write(*,*) "     the script (e.g., in order to skip equilibration parts) (default: 1)"
+write(*,*) " -frame_last=[number] : Last trajectory frame that shall be evaluated "
+write(*,*) "     (default: last frame in XDATCAR)."
+write(*,*) " -write_traj : The file 'trajectory.xyz' containing all frames of XDATCAR"
+write(*,*) "     shall be written during the analysis."
+write(*,*) " -rdf_bins=[number] : Number of bins for RDF evaluation (default: 201)"
+write(*,*) " -rdf_cutoff=[value]: Cutoff for RDF evalulation (default: 8 Angstrom)"
 write(*,*) " -diff_collect : calculates the diffusion coefficients of each element, treating all"
 write(*,*) "     atoms of them as one effective sum particle."
 write(*,*) " -diff_2d : calculates the 2D-diffusion coefficient along x and y, for each element"
 write(*,*) "     in the slab separately, via the mean square displacement (MSD)."
-write(*,*) " -track_atoms=[list of numbers] : Write time-dependent positions of chosen"
-write(*,*) "     atoms to file. Example: track_atoms=1,78,178"
-write(*,*) " -dens_cube: Write Gaussian cube file with spatially resolved atomic densities."
-write(*,*) "The following keywords are only usefuly for surface slab simulations:"
-write(*,*) " -dens_elems : The element densities along a axis or around a sphere are calculated."
 write(*,*) " -dens_bins=[number] : Number of bins for element densities (default: 501)"
 write(*,*) " -dens_mode=[character] : Decides, along which topology the element densities "
 write(*,*) "     shall be calculated, possible are x, y or z for the coordinate axes or "
@@ -174,16 +189,11 @@ write(*,*) "     sphere:[el1,...], where a sphere around the center of mass of t
 write(*,*) "     chosen element(s) is formed, for example -dens_mode=sphere:Pt,H (default: z)."
 write(*,*) " -dens_depth=[value] : How many Angstroms below the slab surface the surface "
 write(*,*) "     concentration of elements shall be determined (default: 5.0)"
-write(*,*) " -cls_element=[element]: CLS calculation templates will be generated for"
-write(*,*) "     the chosen element."
-write(*,*) " -cls_slices=[number]: How many different slices along the z-coordinate where "
-write(*,*) "     the atom for which CLS shall be calculated is located (near for far from the "
-write(*,*) "     surface of the slab (default: 100)."
-write(*,*) " -cls_rounds=[number]: In how many parts the trajectory shall be divided for"
-write(*,*) "     CLS template generation in each part (default: 1)."
-write(*,*) " -tension : calculates the surface tension averaged over all MD frames."
-write(*,*) "     For this, the OUTCAR file needs to be present (MD with ISIF=2)"
-
+write(*,*) " -dft_slices=[number]: How many different slices along the z-coordinate where "
+write(*,*) "     the atom for which DFT POSCAR templates are written (near or far from the "
+write(*,*) "     surface of the slab) (default: 100)."
+write(*,*) " -dft_rounds=[number]: In how many parts the trajectory shall be divided for"
+write(*,*) "     DFT template generation in each part (default: 1)."
 !
 !    The pi
 !
@@ -270,7 +280,6 @@ read(14,*)
 read(14,*) scale_dum
 if (abs(scale_dum-factor) .lt. 1E-10) then
    npt_format=.true.
-   write(*,*) "The XDATCAR file has the format of a NpT trajectory."
 else
    npt_format=.false.
 end if        
@@ -299,13 +308,13 @@ end do
 !    unit cell sizes
 !
 if (npt_format) then
-   nframes = (xdat_lines - 7)/(natoms+8)
+   nframes = int((xdat_lines)/(natoms+8))
    allocate(xlens(nframes),ylens(nframes),zlens(nframes))
    xlens(1)=xlen
    ylens(1)=ylen
    zlens(1)=zlen
 else        
-   nframes = (xdat_lines - 7)/(natoms+1)
+   nframes = int((xdat_lines - 7)/(natoms+1))
 end if
 !
 !    If the XDATCAR file shall not be read in, skip the rest
@@ -356,6 +365,12 @@ do i=1,nframes
 !   In long trajectories, problems might arise with double-digit negative numbers!
 !   (no space between them)   Insert a space again!
 !
+
+      if (npt_format) then
+         xlen=xlens(i)
+         ylen=ylens(i)
+         zlen=zlens(i)
+      end if         
       if (readstat .ne. 0) then
          a220 = ""
          endl = 1
@@ -390,7 +405,7 @@ do i=1,nframes
          end do
 !
 !     Convert to cartesian coordinates
-!
+!        
          if (k .eq. 1) then
             xyz(k,j,i) = act_num(k)*xlen
          end if
@@ -403,32 +418,43 @@ do i=1,nframes
       end do
    end do
 end do
-!
-!     Apply the z-shift if defined
-!
-do i=1,nframes
-   do j=1,natoms
-      xyz(3,j,i)=xyz(3,j,i)+z_shift*zlen
-   end do
-end do
 33 continue
 
 write(*,*) " completed!"
 close(14)
 
-write(*,*)
-write(*,*) "---------- SETTINGS ---------------------------"
-write(*,*) "Number of atoms in the system:",natoms
-write(*,*) "Number of frames in the trajectory:",nframes
-if (calc_rdf) then
-   write(*,*) "Radial distribution functions will be calculated."
-else
-   write(*,*) "No radial distribution functions will be calculated."
+!
+!    If frame_last was determined explicitly and is larger than frame_first: 
+!     set it to the value
+!     else: use the total number of frames for frame_last
+!
+if (frame_last .le. frame_first) then
+   frame_last=nframes
 end if
+!
+
+
+write(*,*)
+write(*,*) "---------- SETTINGS ---------------------------------------"
+write(*,'(a,i7)') " Number of atoms in the system:",natoms
+write(*,'(a,i9)') " Number of frames in the trajectory:",nframes
+write(*,'(a,i5)') " Number of separately evaluated trajectory parts:",analyze_parts
+if (npt_format) then
+   write(*,*) "The XDATCAR file is a NpT trajectory (variable volume)"
+else
+   write(*,*) "The XDATCAR file is a NVT trajectory (fixed volume)"
+end if  
+write(*,'(a,i9,a)') " Frame No. ",frame_first," is the first to be evaluated."
+write(*,'(a,i9,a)') " Frame No. ",frame_last," is the last to be evaluated."
 if (write_traj) then
    write(*,*) "The trajectory will be written to 'trajectory.xyz'."
-else
-   write(*,*) "No xyz trajectory will be written."
+end if
+
+if (calc_rdf) then
+   write(*,*) "Radial distribution functions of all element combinations"
+   write(*,*) " as well as neighbor numbers will be calculated."
+   write(*,'(a,i6)') "  * Number of RDF bins: ",rdf_bins
+   write(*,'(a,f12.6)') "  * RDF cutoff in Angstroms: ",rdf_range
 end if
 if (track_atoms) then
    write(*,*) "The positions of the following atoms will be tracked:"
@@ -438,26 +464,56 @@ if (track_atoms) then
    end do
    write(*,'(i6,a)') track_list(track_num)
 end if        
-write(*,*) "The first ",frame_first," frames will be skipped!"
 if (dens_elems) then
-   write(*,*) "Number of slices along z-axis for element densities:",nbins
+   write(*,*) "The one-dimensional density of elements will be evaluated."
+   if (trim(dens_mode) .eq. "x") then
+      write(*,*) " * Density is evaluated along the x-axis."
+   else if (trim(dens_mode) .eq. "y") then
+      write(*,*) " * Density is evaluated along the y-axis."  
+   else if (trim(dens_mode) .eq. "z") then
+      write(*,*) " * Density is evaluated along the z-axis."  
+   else if (trim(dens_mode(:7)) .eq. "sphere:") then   
+      el_eval_list="XX"
+      el_eval_num=0
+      read(dens_mode(8:),*,iostat=readstat) el_eval_list
+      do i=1,20
+         if (el_eval_list(i) .eq. "XX") exit
+         el_eval_num=el_eval_num+1
+      end do
+      write(*,*) " * Density is evaluated in a sphere around the center of mass"
+      write(*,'(a)',advance="no") "    by the elements: "
+      do i=1,el_eval_num
+         write(*,'(a,a)',advance="no") trim(el_eval_list(i)),"  "
+      end do
+      write(*,*)
+   end if   
+   write(*,*) " * Number of bins for evaluating the densities:",nbins
+   write(*,*) " * Depth below the surface slab (if existent) for which element"
+   write(*,*) "    concentrations will be evaluated:",dens_depth
 end if
+if (calc_diff) then
+   write(*,*) "The element self-diffusion coefficients will be calculated."
+   write(*,'(a,f12.6)') "  * The assumed MD time step (fs):",time_step
+   if (diff_2d) then
+      write(*,*) " * Only diffusions parallel to the x-y plane will be considered."
+   end if
+   if (diff_collect) then
+      write(*,*) " * Atoms of one element are treated as collective particle."
+   end if        
+end if        
 if (cls_element .ne. "XX") then
-   write(*,'(a,a,a,i3,a)') " CLS will be calculated for element: ",cls_element," (index: ",cls_elem_ind,")"
-   write(*,*) "Number of slices along z-axis for CLS calculations:",atom_slices
-   write(*,*) "Number of trajectory parts for CLS calculations:",cls_rounds
+   write(*,'(a)') " DFT example structures will be printed to POSCAR files,"
+   write(*,'(a,a,a)') "  with ",cls_element," atoms at different representative positions "
+   write(*,*) " * Number of slices along z-axis for selection:",atom_slices
+   write(*,*) " * Number of trajectory (sub-)parts for selection:",cls_rounds
 end if
-write(*,*) "-------------------------------------------------"
+if (calc_stable) then
+   write(*,*) "The stability of the system (its bonds) shall be investigated."
+   write(*,'(a,f12.6,a)') "  * Maximum bong elongation before breaking: ",bond_tol," times"
+end if        
+write(*,*) "------------------------------------------------------------"
 write(*,*)
 
-!
-!    If frame_last was determined explicitly and is larger than frame_first: 
-!     set it to the value
-!     else: use the total number of frames for frame_last
-!
-if (frame_last .le. frame_first) then
-   frame_last=nframes 
-end if        
 !
 !    Determine the number of frames in each part
 !
@@ -469,7 +525,7 @@ end do
 if (analyze_parts .gt. 1) then
    frames_part(analyze_parts)=nframes-sum(frames_part(1:analyze_parts-1))
 else 
-   frames_part(1)=frame_last-frame_first
+   frames_part(1)=frame_last-frame_first+1
 end if
 !
 !    For surface concentrations: write them into global file
@@ -575,7 +631,7 @@ do i=1,analyze_parts
 !    Calculate radial distribution functions and number of neighbors
 !
    if (calc_rdf) then
-      call calculate_rdf(frames_part(i),xyz_part)
+      call calculate_rdf(frames_part(i),xyz_part,xlens_p,ylens_p,zlens_p)
    end if
 !
 !    Calculate the surface tension
@@ -601,8 +657,25 @@ do i=1,analyze_parts
    if (dens_cube) then
       call spacial_density(frames_part(i),xyz_part,xlens_p,ylens_p,zlens_p)
    end if
+!
+!    Determine if the system remained stable during the MD and if not, which
+!    bond broke first at what time
+!
+   if (calc_stable) then
+      call stability(frames_part(i),xyz_part,xlens_p,ylens_p,zlens_p)
+   end if        
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
    call chdir("..")
+!
+!    If only dens_elems is active and more than 100 parts shall be 
+!     evaluated: remove the single folders!
+!
+   if (dens_elems .and. (.not. track_atoms) .and. (.not. calc_rdf) .and. &
+                 & (.not. surf_tension) .and. (.not. calc_diff)  .and. &
+                 & (.not. dens_cube) .and. (cls_element .ne. "XX") .and. &
+                 & (analyze_parts .gt. 100)) then
+      call system ("rm "//trim(folder_name))
+   end if
 end do
 
 if (dens_elems .and. (analyze_parts .gt. 1)) then
@@ -637,6 +710,29 @@ if (write_traj) then
    write(*,*) " completed!"
    write(*,*)
 end if
+write(*,*)
+if (dens_elems .and. (.not. track_atoms) .and. (.not. calc_rdf) .and. &
+              & (.not. surf_tension) .and. (.not. calc_diff)  .and. &
+              & (.not. dens_cube) .and. (cls_element .ne. "XX") .and. & 
+              & (analyze_parts .gt. 100)) then
+   write(*,*) "Only -dens_elems was ordered and more than 100 trajectory parts"
+   write(*,*) " were evaluated. Therefore, no analysis folders are written."
+else
+   if (analyze_parts .eq. 1) then
+      write(*,*) "Results of the analysis are written to folder analysis."
+   else
+      write(*,'(a)',advance="no") " Results of the analysis are written to folders analysis_part1 to"
+      if (analyze_parts .lt. 10) then
+         write(*,'(a,i1)') " analysis_part",analyze_parts    
+      else if (analyze_parts .lt. 100) then
+         write(*,'(a,i2)') " analysis_part",analyze_parts   
+      else if (analyze_parts .lt. 1000) then
+         write(*,'(a,i3)') " analysis_part",analyze_parts
+      else
+         write(*,'(a,i4)') " analysis_part",analyze_parts
+      end if   
+   end if        
+end if        
 
 write(*,*)
 write(*,*) "analyze_md ended normally..."
@@ -671,8 +767,6 @@ do i = 1, command_argument_count()
    call get_command_argument(i, arg)
    if (trim(arg(1:13))  .eq. "-part_number=") then
       read(arg(14:),*) analyze_parts
-      write(*,*) "The trajectory will be evaluated at ",analyze_parts, &
-              & " separate parts."
    end if
 end do
 
@@ -705,7 +799,6 @@ do i = 1, command_argument_count()
    call get_command_argument(i, arg)
    if (trim(arg(1:11))  .eq. "-dens_bins=") then
       read(arg(12:),*) nbins
-      write(*,*) "The number of bins for the element density calculation is: ",nbins
    end if
 end do
 
@@ -732,7 +825,6 @@ do i = 1, command_argument_count()
    if (trim(arg(1:12))  .eq. "-dens_depth=") then
       read(arg(13:),*) dens_depth
       write(*,*)
-      write(*,'(a,f12.7,a)') " The slab surface region shall be:",dens_depth," Ang."
    end if
 end do
 !
@@ -772,6 +864,16 @@ do i = 1, command_argument_count()
       calc_rdf = .true.
    end if
 end do
+!
+!    Look if the stability of the system shall be investigated
+!
+calc_stable = .false.
+do i = 1, command_argument_count()
+   call get_command_argument(i, arg)
+   if (trim(arg)  .eq. "-stability") then
+      calc_stable = .true.
+   end if
+end do
 
 
 !
@@ -786,7 +888,6 @@ do i = 1, command_argument_count()
    call get_command_argument(i, arg)
    if (trim(arg(1:10))  .eq. "-rdf_bins=") then
       read(arg(11:),*) rdf_bins
-      write(*,*) "The number of bins for the RDF calculation is: ",rdf_bins
    end if
 end do
 
@@ -794,7 +895,6 @@ do i = 1, command_argument_count()
    call get_command_argument(i, arg)
    if (trim(arg(1:12))  .eq. "-rdf_cutoff=") then
       read(arg(13:),*) rdf_range
-      write(*,*) "The cutoff for the RDF calculation will be ",rdf_range," Angstroms"
    end if
 end do
 
@@ -812,7 +912,6 @@ do i = 1, command_argument_count()
    call get_command_argument(i, arg)
    if (trim(arg(1:13))  .eq. "-frame_first=") then
       read(arg(14:),*) frame_first
-      write(*,*) "The analysis will start from frame ",frame_first
    end if
 end do
 !
@@ -824,18 +923,18 @@ do i = 1, command_argument_count()
    call get_command_argument(i, arg)
    if (trim(arg(1:12))  .eq. "-frame_last=") then
       read(arg(13:),*) frame_first
-      write(*,*) "The analysis will end at frame ",frame_last
    end if
 end do
 
 
 !
-!    The element for which the CLS shall be calculated
+!    The element for which the POSCAR files usable for further DFT calculations
+!    shall be written
 !
 cls_element="XX"
 do i = 1, command_argument_count()
    call get_command_argument(i, arg)
-   if (trim(arg(1:13))  .eq. "-cls_element=") then
+   if (trim(arg(1:13))  .eq. "-dft_element=") then
       read(arg(14:),*) cls_element
    end if
 end do
@@ -845,7 +944,7 @@ end do
 cls_rounds = 1
 do i = 1, command_argument_count()
    call get_command_argument(i, arg)
-   if (trim(arg(1:12))  .eq. "-cls_rounds=") then
+   if (trim(arg(1:12))  .eq. "-dft_rounds=") then
       read(arg(13:),*) cls_rounds
    end if
 end do
@@ -856,7 +955,7 @@ end do
 atom_slices = 100
 do i = 1, command_argument_count()
    call get_command_argument(i, arg)
-   if (trim(arg(1:12))  .eq. "-cls_slices=") then
+   if (trim(arg(1:12))  .eq. "-dft_slices=") then
       read(arg(13:),*) atom_slices
    end if
 end do
@@ -932,8 +1031,6 @@ if (calc_diff) then
       if (trim(arg(1:4))  .eq. "-dt=") then
          read_dt = .true.
          read(arg(5:32),*) time_step
-         write(*,*)
-         write(*,'(a,f12.7,a)') " The time step shall be:",time_step," fs."
       end if
    end do
 end if
@@ -952,7 +1049,6 @@ do i = 1, command_argument_count()
    call get_command_argument(i, arg)
    if (trim(arg)  .eq. "-write_traj") then
       write_traj = .true.
-      write(*,*) "The file 'trajectory.xyz' will be written!"
    end if
 end do
 !
@@ -963,10 +1059,20 @@ do i = 1, command_argument_count()
    call get_command_argument(i, arg)
    if (trim(arg)  .eq. "-rdf") then
       calc_rdf = .true.
-      write(*,*) "Radial distribution functions will be calculated and "
-      write(*,*) "  written to element-combination files in the folder RDFs!"
    end if
 end do
+
+!
+!    Read in the tolerance factor for bond breakings (stability)
+!
+bond_tol = 1.7d0
+do i = 1, command_argument_count()
+   call get_command_argument(i, arg)
+   if (trim(arg(1:10))  .eq. "-bond_tol=") then
+      read(arg(11:32),*) bond_tol
+   end if
+end do
+
 
 !
 !    If a surface tension calculation is requested and the flag -notraj
@@ -993,7 +1099,7 @@ end if
 !
 if ((.not. calc_rdf) .and. (.not. write_traj) .and. (.not. dens_elems) &
           & .and. (.not. track_atoms) .and. (.not. calc_diff) &
-          & .and. (cls_element .eq. "XX")) then
+          & .and. (cls_element .eq. "XX") .and. (.not. calc_stable)) then
    write(*,*)
    write(*,*) "Please choose at least one of the evaluation options!"
    write(*,*)
@@ -1066,12 +1172,13 @@ end subroutine track_atom_pos
 !    the system
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-subroutine calculate_rdf(nframes,xyz)
+subroutine calculate_rdf(nframes,xyz,xlens,ylens,zlens)
 use analyze_md_mod
 implicit none
 integer::i,j,k,l,m
 integer::nframes  ! current local number of frames
 real(kind=8)::xyz(3,natoms,nframes)  ! local part of the trajectory
+real(kind=8)::xlens(nframes),ylens(nframes),zlens(nframes)  ! the NpT unit cells
 integer::task_act
 
 integer::ig,ngr,npart1,npart2
@@ -1082,6 +1189,7 @@ real(kind=8),allocatable::neighnum(:,:,:)
 real(kind=8)::pos1(3),pos2(3),diff_vec(3)
 real(kind=8),allocatable::rdf_sum(:,:,:)
 real(kind=8)::dist
+real(kind=8)::box_volumes(nframes)  ! the time-dependent unit cell volume
 !
 !    Calculate the RDFs of all elements if desired
 !
@@ -1094,6 +1202,13 @@ rdf_plot=0.d0
 rdf_sum=0.d0
 neighnum=0.d0
 task_act=0
+!
+!    Determine unit cell volumes for each MD step
+!
+do i=1,nframes
+   box_volumes(i)=xlens(i)*ylens(i)*zlens(i)
+end do
+
 all_tasks=((nelems**2-nelems)/2+nelems)*(nframes)
 do l=1,nelems
    do m=l,nelems
@@ -1128,22 +1243,22 @@ do l=1,nelems
 !
 !     Correct the x component
 !
-               do while (abs(diff_vec(1)) .gt. xlen/2.d0)
-                  diff_vec(1)=diff_vec(1)-sign(xlen,diff_vec(1))
+               do while (abs(diff_vec(1)) .gt. xlens(i)/2.d0)
+                  diff_vec(1)=diff_vec(1)-sign(xlens(i),diff_vec(1))
                end do
 
 !
 !     Correct the y component
 !
-               do while (abs(diff_vec(2)) .gt. ylen/2.d0)
-                  diff_vec(2)=diff_vec(2)-sign(ylen,diff_vec(2))
+               do while (abs(diff_vec(2)) .gt. ylens(i)/2.d0)
+                  diff_vec(2)=diff_vec(2)-sign(ylens(i),diff_vec(2))
                end do
 
 !
 !     Correct the z component
 !
-               do while (abs(diff_vec(3)) .gt. zlen/2.d0)
-                  diff_vec(3)=diff_vec(3)-sign(zlen,diff_vec(3))
+               do while (abs(diff_vec(3)) .gt. zlens(i)/2.d0)
+                  diff_vec(3)=diff_vec(3)-sign(zlens(i),diff_vec(3))
                end do
 
                dist = sqrt((diff_vec(1))**2 + &
@@ -1166,7 +1281,7 @@ do l=1,nelems
          npart2=el_nums(m)
          r_act=rdf_binsize*(real(j)+0.5d0)
          vb=((real(j) + 1.d0)**3-real(j)**3)*rdf_binsize**3
-         rho=1.d0/(abs(box_volume))
+         rho=1.d0/(abs(box_volumes(i)))
          nid=4.d0/3.d0*pi*vb*rho*2.0d0
          rdf_plot(j,l,m)=rdf_plot(j,l,m)/(real(ngr)*real(npart1)*real(npart2)*real(nid))
          rdf_plot(j,m,l)=rdf_plot(j,l,m)
@@ -1788,7 +1903,6 @@ implicit none
 integer::i,j,k,l
 integer::nframes  ! current local number of frames
 real(kind=8)::xyz(3,natoms,nframes)  ! local part of the trajectory
-real(kind=8)::xyz2(3,natoms,nframes)  ! transformed local trajectory
 real(kind=8)::xlens(nframes),ylens(nframes),zlens(nframes)  ! the NpT unit cells
 real(kind=8),allocatable::vector1(:),vector2(:),vector3(:),pos_diff(:)
 real(kind=8),allocatable::vector4(:),vector5(:)
@@ -1812,40 +1926,41 @@ allocate(diff(nframes))
 !    Correct for box images: reintroduce the images for diffusion coefficients!
 !
 write(*,*) "Part1: Correct for box images ..."
-xyz2=xyz
 !
 !    Distinguish between NpT and NVT trajectories! (unit cell shapes)
 !
 do i=1,nframes-1
    do j=1,natoms
+      diff_vec(:) = xyz(:,j,i+1) - xyz(:,j,i)
+!
 !     Correct the x component
 !
-      do while ((xyz2(1,j,i+1) - xyz2(1,j,i)) .gt. xlens(i)/2d0)
-         xyz2(1,j,i+1)=xyz2(1,j,i+1)-xlens(i)
+      do while (abs(diff_vec(1)) .gt. xlens(i)/2d0)
+         diff_vec(1)=diff_vec(1)-sign(xlens(i),diff_vec(1))
+!         write(*,*) "correct x"
       end do
-      do while ((xyz2(1,j,i+1) - xyz2(1,j,i)) .lt. -xlens(i)/2d0)
-         xyz2(1,j,i+1)=xyz2(1,j,i+1)+xlens(i)
-      end do
+
 !
 !     Correct the y component
 !
-      do while ((xyz2(2,j,i+1) - xyz2(2,j,i)) .gt. ylens(i)/2d0)
-         xyz2(2,j,i+1)=xyz2(2,j,i+1)-ylens(i)
+      do while (abs(diff_vec(2)) .gt. ylens(i)/2d0)
+         diff_vec(2)=diff_vec(2)-sign(ylens(i),diff_vec(2))
+!         write(*,*) "correct y"
       end do
-      do while ((xyz2(2,j,i+1) - xyz2(2,j,i)) .lt. -ylens(i)/2d0)
-         xyz2(2,j,i+1)=xyz2(2,j,i+1)+ylens(i)
-      end do
+
 !
 !     Correct the z component
 !
-      do while ((xyz2(3,j,i+1) - xyz2(3,j,i)) .gt. zlens(i)/2d0)
-         xyz2(3,j,i+1)=xyz2(3,j,i+1)-zlens(i)
+      do while (abs(diff_vec(3)) .gt. zlens(i)/2d0)
+         diff_vec(3)=diff_vec(3)-sign(zlens(i),diff_vec(3))
+!         write(*,*) "correct z"
       end do
-      do while ((xyz2(3,j,i+1) - xyz2(3,j,i)) .lt. -zlens(i)/2d0)
-         xyz2(3,j,i+1)=xyz2(3,j,i+1)+zlens(i)
-      end do
+
+      xyz(:,j,i+1)=xyz(:,j,i)+diff_vec
+
    end do
 end do
+
 write(*,*) " ... done"
 
 write(*,*) "Part 2: Calculate mean square displacements..."
@@ -1864,11 +1979,11 @@ do i=1,nframes
    do j=1,natoms
       if (diff_2d) then
          do k=1,2
-            pos_diff((j-1)*3+k)=xyz2(k,j,i+frame_first)-xyz2(k,j,1+frame_first)
+            pos_diff((j-1)*3+k)=xyz(k,j,i)-xyz(k,j,1)
          end do
       else
          do k=1,3
-            pos_diff((j-1)*3+k)=xyz2(k,j,i+frame_first)-xyz2(k,j,1+frame_first)
+            pos_diff((j-1)*3+k)=xyz(k,j,i)-xyz(k,j,1)
          end do
       end if
    end do
@@ -2059,10 +2174,10 @@ zdiff=zhi-zlo
 slice_step = zdiff/(atom_slices)
 
 if (cls_element .ne. "XX") then
-   write(*,*) "Write POSCARs for example calculatons..."
+   write(*,*) "Write POSCARs for DFT example calculatons..."
    atom_first=sum(el_nums(1:cls_elem_ind-1))+1
    atom_last=sum(el_nums(1:cls_elem_ind))
-   call system("mkdir core_levels")
+   call system("mkdir dft_input")
    slice_size=int(nframes/cls_rounds)
    rounds: do r=1,cls_rounds
       if (r .le. 9) then
@@ -2072,10 +2187,10 @@ if (cls_element .ne. "XX") then
       else
           write(roundname,'(a,i3)') "round",r
       end if
-      call system("mkdir core_levels/" //roundname)
+      call system("mkdir dft_input/" //roundname)
 
-      open(unit=18,file="core_levels/" // trim(roundname) // "/active_examples.xyz",status="replace")
-      open(unit=19,file="core_levels/" // trim(roundname) // "/active_examples.XDATCAR",status="replace")
+      open(unit=18,file="dft_input/" // trim(roundname) // "/active_examples.xyz",status="replace")
+      open(unit=19,file="dft_input/" // trim(roundname) // "/active_examples.XDATCAR",status="replace")
 !
 !     Write header of XDATCAR file
 !
@@ -2097,14 +2212,14 @@ if (cls_element .ne. "XX") then
       if (allocated(struc_used)) deallocate(struc_used)
       allocate(struc_used(frame_round_last-frame_round_first))
       struc_used=.false.
-      write(*,*) "CLS round ",r,": From frame ", frame_round_first," to ",frame_round_last
+      write(*,*) "DFT round ",r,": From frame ", frame_round_first," to ",frame_round_last
       slices: do i=1,atom_slices
          if (i .le. 9) then
-            write(filename,'(a,a,a,i1)') "core_levels/",trim(roundname),"/POSCAR_slice",i
+            write(filename,'(a,a,a,i1)') "dft_input/",trim(roundname),"/POSCAR_slice",i
          else if (i .le. 99) then
-            write(filename,'(a,a,a,i2)') "core_levels/",trim(roundname),"/POSCAR_slice",i
+            write(filename,'(a,a,a,i2)') "dft_input/",trim(roundname),"/POSCAR_slice",i
          else
-            write(filename,'(a,a,a,i3)') "core_levels/",trim(roundname),"/POSCAR_slice",i
+            write(filename,'(a,a,a,i3)') "dft_input/",trim(roundname),"/POSCAR_slice",i
          end if
 
          frames: do j=frame_round_first,frame_round_last
@@ -2124,7 +2239,7 @@ if (cls_element .ne. "XX") then
 !     Write header of POSCAR file for Core Level shift
 !
                   open(unit=20,file=filename)
-                  write(20,*) "Active atom at z = ",xyz(3,k,j),", input for Core Level calculation."
+                  write(20,*) "Active atom at z = ",xyz(3,k,j),", input for DFT calculation (e.g., CLS)."
                   write(20,*) factor
                   write(20,*) xlen,0.0,0.0
                   write(20,*) 0.0,ylen,0.0
@@ -2152,7 +2267,7 @@ if (cls_element .ne. "XX") then
                end if
             end do
          end do frames
-         write(*,*) "Warning: No Active atom found in slice No.",i
+  !       write(*,*) "Warning: No Active atom found in slice No.",i
       end do slices
       close(18)
       close(19)
@@ -2160,15 +2275,10 @@ if (cls_element .ne. "XX") then
    write(*,*) " completed!"
    write(*,*)
 end if
-write(*,*)
-!if (write_traj) then
-!   write(*,*) "File 'trajectory.xyz' with xyz trajectory written."
-!end if
-write(*,*) "File 'dens_elems' with element densities in z-direction written."
 if (cls_element .ne. "XX") then
-   write(*,*) "POSCAR files for Core level shifts written to folder 'core_levels/round...'."
+   write(*,*) "POSCAR files for DFT single points written to folder 'dft_input/round...'."
    write(*,*) "Files 'active_examples.xyz/.XDATCAR' with active atom positions written "
-   write(*,*) "  to core_levels/round...."
+   write(*,*) "  to dft_input/round...."
 end if
 end subroutine pick_structures
 
@@ -2351,6 +2461,337 @@ do i=1,nelems
 end do
 
 end subroutine spacial_density
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!    SUBROUTINE STABILITY
+!    Determine if all bonds remain stable during the part of 
+!    the MD. First determine all active bonds in the first 
+!    frame, then check in the following frames if any of those
+!    bonds got more than stable_crit longer than initial
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+subroutine stability(nframes,xyz,xlens,ylens,zlens)
+use analyze_md_mod
+implicit none
+integer::i,j,k,l
+integer::nframes  ! current local number of frames
+real(kind=8)::xyz(3,natoms,nframes)  ! local part of the trajectory
+real(kind=8)::xlens(nframes),ylens(nframes),zlens(nframes) ! unit cells
+real(kind=8)::atom_radii(natoms)  ! covalent radii for all atoms 
+real(kind=8)::pos1(3),pos2(3),diff_vec(3),dist
+integer,allocatable::bond_list(:,:)  ! list with bonds
+integer::bond_num  ! number of bonds
+real(kind=8),allocatable::bond_lengths(:)   ! The bond lengths at the beginning
+
+
+write(*,*) "Check the stability of the systems (bond breakings)!"
+
+!
+!    Determine covalent radii of all atoms in the system
+!
+
+do i=1,natoms
+   if (at_names(i) .eq. "H") then
+      atom_radii(i)=0.32d0
+   else if (at_names(i) .eq. "He") then
+      atom_radii(i)=0.46d0
+   else if (at_names(i) .eq. "Li") then
+      atom_radii(i)=1.33d0
+   else if (at_names(i) .eq. "Be") then
+      atom_radii(i)=1.02d0
+   else if (at_names(i) .eq. "B") then
+      atom_radii(i)=0.85d0
+   else if (at_names(i) .eq. "C") then
+      atom_radii(i)=0.75d0
+   else if (at_names(i) .eq. "N") then
+      atom_radii(i)=0.71d0
+   else if (at_names(i) .eq. "O") then
+      atom_radii(i)=0.63d0
+   else if (at_names(i) .eq. "F") then
+      atom_radii(i)=0.64d0
+   else if (at_names(i) .eq. "Ne") then
+      atom_radii(i)=0.67d0
+   else if (at_names(i) .eq. "Na") then
+      atom_radii(i)=1.55d0
+   else if (at_names(i) .eq. "Mg") then
+      atom_radii(i)=1.39d0
+   else if (at_names(i) .eq. "Al") then
+      atom_radii(i)=1.26d0
+   else if (at_names(i) .eq. "Si") then
+      atom_radii(i)=1.16d0
+   else if (at_names(i) .eq. "P") then
+      atom_radii(i)=1.11d0
+   else if (at_names(i) .eq. "S") then
+      atom_radii(i)=1.03d0
+   else if (at_names(i) .eq. "Cl") then
+      atom_radii(i)=0.99d0
+   else if (at_names(i) .eq. "Ar") then
+      atom_radii(i)=0.96d0
+   else if (at_names(i) .eq. "Sc") then
+      atom_radii(i)=1.48d0
+   else if (at_names(i) .eq. "Ti") then
+      atom_radii(i)=1.36d0
+   else if (at_names(i) .eq. "V") then
+     atom_radii(i)=1.34d0
+   else if (at_names(i) .eq. "Cr") then
+      atom_radii(i)=1.22d0
+   else if (at_names(i) .eq. "Mn") then
+      atom_radii(i)=1.19d0
+   else if (at_names(i) .eq. "Fe") then
+      atom_radii(i)=1.160
+   else if (at_names(i) .eq. "Co") then
+      atom_radii(i)=1.11d0
+   else if (at_names(i) .eq. "Ni") then
+      atom_radii(i)=1.10d0
+   else if (at_names(i) .eq. "Cu") then
+      atom_radii(i)=1.12d0
+   else if (at_names(i) .eq. "Zn") then
+      atom_radii(i)=1.18d0
+   else if (at_names(i) .eq. "Ga") then
+      atom_radii(i)=1.24d0
+   else if (at_names(i) .eq. "Ge") then
+      atom_radii(i)=1.21d0
+   else if (at_names(i) .eq. "As") then
+      atom_radii(i)=1.21d0
+   else if (at_names(i) .eq. "Se") then
+      atom_radii(i)=1.16d0
+   else if (at_names(i) .eq. "Br") then
+      atom_radii(i)=1.14d0
+   else if (at_names(i) .eq. "Kr") then
+      atom_radii(i)=1.17d0
+   else if (at_names(i) .eq. "Mo") then
+      atom_radii(i)=1.38d0
+   else if (at_names(i) .eq. "Tc") then
+      atom_radii(i)=1.28d0
+   else if (at_names(i) .eq. "Ru") then
+      atom_radii(i)=1.25d0
+   else if (at_names(i) .eq. "Rh") then
+      atom_radii(i)=1.25d0
+   else if (at_names(i) .eq. "Pd") then
+      atom_radii(i)=1.20d0
+   else if (at_names(i) .eq. "Ag") then
+      atom_radii(i)=1.28d0
+   else if (at_names(i) .eq. "Cd") then
+      atom_radii(i)=1.36d0
+   else if (at_names(i) .eq. "In") then
+      atom_radii(i)=1.42d0
+   else if (at_names(i) .eq. "Sn") then
+      atom_radii(i)=1.40d0
+   else if (at_names(i) .eq. "Sb") then
+      atom_radii(i)=1.40d0
+   else if (at_names(i) .eq. "Te") then
+      atom_radii(i)=1.36d0
+   else if (at_names(i) .eq. "I") then
+      atom_radii(i)=1.33d0
+   else if (at_names(i) .eq. "Xe") then
+      atom_radii(i)=1.31d0
+   else if (at_names(i) .eq. "La") then
+      atom_radii(i)=1.80d0
+   else if (at_names(i) .eq. "Ce") then
+      atom_radii(i)=1.63d0
+   else if (at_names(i) .eq. "Pr") then
+      atom_radii(i)=1.76d0
+   else if (at_names(i) .eq. "Nd") then
+      atom_radii(i)=1.74d0
+   else if (at_names(i) .eq. "Pm") then
+      atom_radii(i)=1.73d0
+   else if (at_names(i) .eq. "Sm") then
+      atom_radii(i)=1.72d0
+   else if (at_names(i) .eq. "Eu") then
+      atom_radii(i)=1.68d0
+   else if (at_names(i) .eq. "Gd") then
+      atom_radii(i)=1.69d0
+   else if (at_names(i) .eq. "Tb") then
+      atom_radii(i)=1.68d0
+   else if (at_names(i) .eq. "Dy") then
+      atom_radii(i)=1.67d0
+   else if (at_names(i) .eq. "Ho") then
+      atom_radii(i)=1.66d0
+   else if (at_names(i) .eq. "Er") then
+      atom_radii(i)=1.65d0
+   else if (at_names(i) .eq. "Tm") then
+      atom_radii(i)=1.64d0
+   else if (at_names(i) .eq. "Yb") then
+      atom_radii(i)=1.70d0
+   else if (at_names(i) .eq. "Lu") then
+      atom_radii(i)=1.62d0
+   else if (at_names(i) .eq. "Hf") then
+      atom_radii(i)=1.52d0
+   else if (at_names(i) .eq. "Ta") then
+      atom_radii(i)=1.46d0
+   else if (at_names(i) .eq. "W") then
+      atom_radii(i)=1.37d0
+   else if (at_names(i) .eq. "Re") then
+      atom_radii(i)=1.31d0
+   else if (at_names(i) .eq. "Os") then
+      atom_radii(i)=1.29d0
+   else if (at_names(i) .eq. "Ir") then
+      atom_radii(i)=1.22d0
+   else if (at_names(i) .eq. "Pt") then
+      atom_radii(i)=1.23d0
+   else if (at_names(i) .eq. "Au") then
+      atom_radii(i)=1.24d0
+   else if (at_names(i) .eq. "Hg") then
+      atom_radii(i)=1.33d0
+   else if (at_names(i) .eq. "Tl") then
+      atom_radii(i)=1.44d0
+   else if (at_names(i) .eq. "Pb") then
+      atom_radii(i)=1.44d0
+   else if (at_names(i) .eq. "Bi") then
+      atom_radii(i)=1.51d0
+   else if (at_names(i) .eq. "Po") then
+      atom_radii(i)=1.45d0
+   else if (at_names(i) .eq. "At") then
+      atom_radii(i)=1.47d0
+   else if (at_names(i) .eq. "Rn") then
+      atom_radii(i)=1.42d0
+   else if (at_names(i) .eq. "Ac") then
+      atom_radii(i)=1.86d0
+   else if (at_names(i) .eq. "Th") then
+      atom_radii(i)=1.75d0
+   else if (at_names(i) .eq. "Pa") then
+      atom_radii(i)=1.69d0
+   else if (at_names(i) .eq. "U") then
+      atom_radii(i)=1.70d0
+   else if (at_names(i) .eq. "Np") then
+      atom_radii(i)=1.71d0
+   else if (at_names(i) .eq. "Pu") then
+      atom_radii(i)=1.72d0
+   else if (at_names(i) .eq. "Am") then
+      atom_radii(i)=1.66d0
+   else if (at_names(i) .eq. "Cm") then
+      atom_radii(i)=1.66d0
+   end if
+end do
+!
+!    Allocate the bond list with a maximum number of bonds
+!
+allocate(bond_list(2,int((natoms*natoms-natoms)/2)))
+allocate(bond_lengths(int((natoms*natoms-natoms)/2)))
+!
+!    Determine all bonds in the first MD frame
+!
+bond_num=0
+do i=1,natoms
+   do j=i+1,natoms
+
+      pos1 = xyz(:,i,1)
+      pos2 = xyz(:,j,1)
+
+      diff_vec=pos1-pos2
+!
+!     Correct the x component
+!
+      do while (abs(diff_vec(1)) .gt. xlens(1)/2.d0)
+         diff_vec(1)=diff_vec(1)-sign(xlens(1),diff_vec(1))
+      end do
+
+!
+!     Correct the y component
+!
+      do while (abs(diff_vec(2)) .gt. ylens(1)/2.d0)
+         diff_vec(2)=diff_vec(2)-sign(ylens(1),diff_vec(2))
+      end do
+
+!
+!     Correct the z component
+!
+      do while (abs(diff_vec(3)) .gt. zlens(1)/2.d0)
+         diff_vec(3)=diff_vec(3)-sign(zlens(1),diff_vec(3))
+      end do
+
+      dist = sqrt((diff_vec(1))**2 + &
+            & (diff_vec(2))**2 + (diff_vec(3))**2)
+!
+!     If the distance is smaller than the sum of radii times a factor,
+!      mark it as a bond
+!
+      if (dist .lt. (atom_radii(i)+atom_radii(j))*1.4d0) then
+         bond_num=bond_num+1
+         bond_list(1,bond_num)=i
+         bond_list(2,bond_num)=j
+         bond_lengths(bond_num)=dist
+      end if        
+
+   end do
+end do   
+
+!
+!   Now loop through all remaining MD frames and check if a 
+!      bond is too elongated
+!
+do i=1,nframes
+   do j=1,bond_num
+      pos1=xyz(:,bond_list(1,j),i)
+      pos2=xyz(:,bond_list(2,j),i)
+      diff_vec=pos1-pos2
+!
+!     Correct the x component
+!
+      do while (abs(diff_vec(1)) .gt. xlens(1)/2.d0)
+         diff_vec(1)=diff_vec(1)-sign(xlens(1),diff_vec(1))
+      end do
+
+!
+!     Correct the y component
+!
+      do while (abs(diff_vec(2)) .gt. ylens(1)/2.d0)
+         diff_vec(2)=diff_vec(2)-sign(ylens(1),diff_vec(2))
+      end do
+
+!
+!     Correct the z component
+!
+      do while (abs(diff_vec(3)) .gt. zlens(1)/2.d0)
+         diff_vec(3)=diff_vec(3)-sign(zlens(1),diff_vec(3))
+      end do
+
+      dist = sqrt((diff_vec(1))**2 + &
+            & (diff_vec(2))**2 + (diff_vec(3))**2)
+!
+!     If the distance is more than bond_tol longer than the initial
+!       bond length, mark the bond as broken and exit the analysis!
+!
+      if (dist .gt. (bond_lengths(j)*bond_tol)) then
+         write(*,*) "A broken bond has been detected!"
+         write(*,'(a,i5,a,a,a,i5,a,a,a)') " Bond between atoms ", &
+               & bond_list(1,j),"(", &
+               &  trim(at_names(bond_list(1,j))),") and ",bond_list(2,j), &
+               & "(",trim(at_names(bond_list(2,j))),")"
+         write(*,'(a,f12.6,a,f12.6,a)') " Initial bond length:",bond_lengths(j), &
+               & " Ang., current bond length:",dist," Ang."
+         write(*,'(a,i9)') " This happened at MD step",i
+         write(*,*) "The analysis will be aborted..."
+!
+!     Write the initial frame and the final frame when the breaking is detected 
+!      to a xyz file with two frames
+!
+         open(unit=78,file="bond_break.xyz",status="replace")
+         write(78,*) natoms
+         write(78,*) "Initial structure of the trajectory."
+         do k=1,natoms
+            write(78,*) at_names(k)," ",xyz(:,k,1)
+         end do
+         write(78,*) natoms
+         write(78,'(a,i8,a,i6,a,i6)') "Frame with broken bond (No.",i, &
+                    &"), bond ",bond_list(1,j),"-",bond_list(2,j)
+         do k=1,natoms
+            write(78,*) at_names(k)," ",xyz(:,k,i)
+         end do
+         close(78)
+         write(*,*) "File 'bond_break.xyz' with first frame and broken frame written."
+         goto 48
+      end if        
+
+   end do
+end do
+write(*,*) "All bonds were stable during the trajectory."
+48 continue
+
+end subroutine stability
+
+
 
 subroutine replace_text (s,text,rep,outs)
 CHARACTER(*)        :: s,text,rep

@@ -556,6 +556,7 @@ else
       end do
    end do
 end if
+
 !
 !    For 3D element densities, determine number of steps around current position
 !    One Angstrom around

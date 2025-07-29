@@ -68,7 +68,10 @@ print('''
      in 2pi/Angstrom (default: 0.03)
   -gen_potcar : Generates a POTCAR file for the given POSCAR
   -potcar_path=[path] : The path with the VASP POTCAR collection for all
-     elements (default: ~/ (home-directory))
+     elements (default: ~/ (home-directory)) 
+  -count_elec : Determine the total number of valence electrons of the 
+     system (NELECT keyword), by assuming that all elements are modeled
+     by their standard PAW PBE potentials.
   -density : Calculates the density of the POSCAR file (g/cm^3)
   -atoms=a,b,c : Selects a list of atoms to be used for an evaluation
      option, for example to define a plane for angle measurement.
@@ -87,6 +90,7 @@ angle_job=False
 dens_job=False
 kpoints_job=False
 potcar_job=False
+elec_job=False
 k_dens=0.04
 pot_path="~/"  # The default POTCAR path, change if needed!
 vac_min=7.0
@@ -99,6 +103,8 @@ for arg in sys.argv:
       kpoints_job=True   
    if arg == "-gen_potcar":
       potcar_job=True
+   if arg == "-count_elec":
+      elec_job=True
    if re.search("=",arg):
       param,actval=arg.split("=")
       if param == "-atoms":
@@ -120,6 +126,8 @@ elif kpoints_job:
    print(" A KPOINTS file for the POSCAR file will be written.")
 elif potcar_job: 
    print(" A POTCAR file for the POSCAR file will be written.")
+elif elec_job: 
+   print(" The total number of valence electrons will be calculated.")
 else:
    print(" Please give a valid job!\n")
    sys.exit(1)
@@ -246,6 +254,24 @@ elements_dict = {'H' : 1.008,'HE' : 4.003, 'LI' : 6.941, 'BE' : 9.012,\
                  'NH' : 284, 'FL' : 289, 'MC' : 288, 'LV' : 292, 'TS' : 294,\
                  'OG' : 294}
 
+# A dictionary for the number of valence electrons (standard PBE PAW)
+element_valence_dict = {"H": 1.0, "He": 2.0, "Li": 1.0, "BE": 2.0, "B": 3.0,\
+                 "C": 4.0, "N": 5.0, "O": 6.0, "F": 7.0, "NE": 8.0, "NA": 1.0,\
+                 "MG": 2.0, "AL": 3.0, "SI": 4.0, "P": 5.0, "S": 6.0, "CL": 7.0,\
+                 "AR": 8.0, "SC": 3.0, "TI": 4.0, "V": 5.0, "CR": 6.0,\
+                 "MN": 7.0, "FE": 8.0, "CO": 9.0, "NI": 10.0, "CU": 11.0,\
+                 "ZN": 12.0, "GA": 3.0, "GE": 4.0, "AS": 5.0, "SE": 6.0,\
+                 "BR": 7.0, "KR": 8.0, "MO": 6.0, "TC": 7.0, "RU": 8.0,\
+                 "RH": 9.0, "PD": 10.0, "AG": 11.0, "CD": 12.0, "IN": 3.0,\
+                 "SN": 4.0, "SB": 5.0, "TE": 6.0, "I": 7.0, "XE": 8.0,\
+                 "LA": 11.0, "CE": 12.0, "PR": 13.0, "ND": 14.0, "PM": 16.0,\
+                 "SM": 16.0, "EU": 17.0, "GD": 18.0, "TB": 19.0, "DY": 20.0,\
+                 "HO": 21.0, "ER": 22.0, "TM": 23.0, "YB": 24.0, "LU": 25.0,\
+                 "HF": 4.0, "TA": 5.0, "W": 6.0, "RE": 7.0, "OS": 8.0, "IR": 9.0,\
+                 "PT": 10.0, "AU": 11.0, "HG": 12.0, "TL": 3.0, "PB": 4.0,\
+                 "BI": 5.0, "PO": 6.0, "AT": 7.0, "RN": 8.0, "AC": 11.0,\
+                 "TH": 12.0, "PA": 13.0, "U": 14.0, "NP": 15.0, "PU": 16.0,\
+                 "AM": 17.0, "CM": 18.0}
 # Define coordinate transformation as functions in order to use them intermediately!
 # F1: FRAC2CART
 def trans_frac2cart(xyz,natoms,a_vec,b_vec,c_vec):
@@ -386,7 +412,7 @@ if dens_job:
    for i in range(nelem):
       el_act=elements[i]
       el_act=elements[i].upper()
-      mass_act=elements_dict[elements[i]]
+      mass_act=elements_dict[el_act]
       mass_tot=mass_tot+mass_act*elem_num[i]
 
    density=mass_tot/volume*1.66053906660
@@ -497,6 +523,27 @@ if kpoints_job:
    print(" ")
    print(" The KPOINTS file was written.")
 
+
+#   Determine the total number of electrons in the system
+
+if elec_job:
+   elec_tot=0.0
+   print(" Analysis of the valence electrons... :")
+   for i in range(nelem):
+      el_act_print=elements[i]
+      el_act=elements[i].upper()
+      elec_act=element_valence_dict[el_act]
+      elec_tot=elec_tot+elec_act*elem_num[i]
+      print("  *",el_act_print,":  ",elec_act," valence electrons  (",elem_num[i]," atoms)")
+   print(" ")
+   print(" Total number of valence electrons: ",elec_tot)   
+   original_stdout=sys.stdout
+   with open("NELECT.dat","w") as f:
+      sys.stdout = f
+      print(elec_tot)
+   sys.stdout = original_stdout
+
+   print(" File NELECT.dat with valence electron number written.")   
 
 if angle_job:
 

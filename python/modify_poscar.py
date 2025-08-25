@@ -818,6 +818,10 @@ if insert:
    xyz_new=np.zeros((natoms,3))
    names=[""]*natoms
 
+#  Increase the length of the total element number array, if needed
+   while nelem > len(elem_num):
+      elem_num.append(0) 
+
    index=0
    for i in range(nelem):
       for j in range(natoms_tmp):

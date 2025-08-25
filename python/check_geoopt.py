@@ -74,7 +74,7 @@ parser = OptionParser()
 parser.add_option("-v","--verbose",dest="verbose",help="Print extra info",action="store_true")
 (options,args) = parser.parse_args()
 
-print("This script prints out energies and gradients for selective dynamics!")
+print("This script prints out energies and gradients for (selective) dynamics!")
 print(" Besides the OUTCAR, a POSCAR file must be present!")
 
 
@@ -109,10 +109,18 @@ with poscar as infile:
    for i in range(natoms):
       line= infile.readline()
       atline = line.split()
-      select_x.append(atline[3])
-      select_y.append(atline[4])
-      select_z.append(atline[5])
-
+#
+#     Determine the flags for selective dynamics. If they do not exist,
+#     set all to T
+#
+      try: 
+         select_x.append(atline[3])
+         select_y.append(atline[4])
+         select_z.append(atline[5])
+      except Exception:
+         select_x.append("T")
+         select_y.append("T")
+         select_z.append("T")
 
 no_conv = [True]*natoms
 try:
@@ -181,8 +189,9 @@ if outcar != None:
    #maxforce = 0.0
 
    i = 0
-   grad_out = open("grad2select.log","w")
-   print(" Step-No.   energy    average force     max. force")
+   grad_out = open("check_geoopt.log","w")
+   print(" Step-No.   energy    average force     max. force     volume")
+   print(" Step-No.     energy   average force   max. force      volume",file=grad_out)
    for line in outcarlines:
       if re_iteration.search(line):
          iterations = iterations + 1
@@ -267,10 +276,10 @@ if outcar != None:
             # sys.stdout.write(("Step %3i  Energy: %+3.6f  Log|dE|: %+1.3f  Avg|F|: %.6f  Max|F|: %.6f  SCF: %3i  Mag: %2.2f  Time: %03.2fm") % (steps,energy,dE,average,maxforce,iterations,magmom,cputime))
             magstr="Mag: " + ("%2.2f" % (magmom)).rjust(6)
             print("%s  %s  %s  %s  %s  %s  %s  %s  %s" % (stepstr,energystr,logdestr,iterstr,avgfstr,maxfstr,volstr,magstr,timestr))
-            print("%4i %3.7f  %2.5f %2.5f " % (steps,energy,average,maxforce), file=grad_out)
+            print("%4i %3.7f  %2.5f %2.5f  %3.7f" % (steps,energy,average,maxforce,volume), file=grad_out)
          else:
             print("%s  %s  %s  %s  %s  %s  %s  %s" % (stepstr,energystr,logdestr,iterstr,avgfstr,maxfstr,volstr,timestr))
-            print("%4i %3.7f  %2.5f  %2.5f " % (steps,energy,average,maxforce), file=grad_out)
+            print("%4i       %3.7f   %2.5f    %2.5f   %3.7f " % (steps,energy,average,maxforce,volume), file=grad_out)
             # sys.stdout.write(("Step %3i  Energy: %+3.6f  Log|dE|: %+1.3f  Avg|F|: %.6f  Max|F|: %.6f  SCF: %3i  Time: %03.2fm") % (steps,energy,dE,average,maxforce,iterations,cputime))
 
          sys.stdout.write(ENDC)
@@ -285,4 +294,4 @@ for i in range(natoms):
    if no_conv[i]:
       print("Atom " + str(i) + " is not converged yet.")
 print ("The maximum force acts on atom " + str(maxpos) + ".")
-print ("File 'grad2select.log' for plots was written!")
+print ("File 'check_geoopt.log' for plots was written!")

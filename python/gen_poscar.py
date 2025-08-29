@@ -57,17 +57,29 @@ Management:
 #    Print general information and all possible keywords of the program    
 #
 print('''
-This script manages the buildup of unary/binary/ternary/quaternary 
-metal alloy systems in a randomized manner, i.e., the number 
-of element atoms representing the overall composition
-is placed randomically in a regular cubic grid.
+This script manages the buildup of POSCAR files for bulk and surface
+systems with different unit cell geometries.
+An arbitrary number of elements can be added, and the atoms can
+be placed either regularly or by chance. Simple cubic grids as well
+as well-known unit cells (hpc, fcc) and surface configurations 
+(001, 011, 111, 0001) can be generated.
 
 The script must be called with a number of command line parameters.
  -overview : Print overview of utils4VASP scripts/programs
+ -geometry=[option] : Which kind of close-packed structure shall be 
+   taken. Currently available are: fcc (face-centered cubic), hcp 
+   (hexagonal close pakackage) and sc (simple cubic).
+ -facet=[option] : If a surface slab shall be build: which facet
+   shall be used, available are: 111, 100, 110 (for fcc), 
+   0001, 10-10, 10-11 (hcp), 100, 110, 111 (sc). If this option is 
+   not given, always the first of the options for the package 
+   is chosen. 
+ -el_symbols=[list] : List of element symbols for the contained elements
  -elnum=[number] : The number of different elements in the system (max: 4)
- -unit_num=[number] : Number of atoms in the grid along x/y axes
- -el_symbols=[list] : List of element symbols, must agree with elnum
- -natoms=[list] : List of number of atoms per element given abive
+ -unit_x=[number] : Number of atoms along the x axis (or a axis)
+ -unit_y=[number] : Number of atoms along the y axis (or b acis)
+ -unit_z=[number] : Number of atoms along the z axis (or c axis)
+ -natoms=[list] : List of abundancies of elements, one number for each
 The following arguments are optional and have default values 
  -z_vac=[value] : Size of the vacuum along z-axis (default: 20 Ang.)
  -x_vac=[value] : Size of the vacuum along x-axis (default: 0 Ang.)
@@ -82,8 +94,17 @@ Example: build_alloy.py -elnum=2 -unit_num=5 -el_symbols=Ga,Pt
                  ''')
 
 #
+#    Default values for central command line parameters
+#
+geom_name="none"
+facet_name="default"
+unit_x = 1
+unit_y = 1
+unit_z = 1
+#
 #    Default values for optional command line parameters
 #
+
 unit_len = 2.54  # The dimensions of a unit cell in x and y 
 z_vacuum = 20.0  # Length of vacuum in z-direction (Angstrom)
 x_vacuum = 0.0   # Length of vacuum in x-direction (Angstrom)
@@ -103,14 +124,18 @@ el_num_list=""
 for arg in sys.argv:
    if re.search("=",arg):
       param,actval=arg.split("=")
-      if param == "-elnum":
-         elnum=int(actval)
-      if param == "-unit_num":
-         unit_num=int(actval)
+      if param == "-geometry":
+         geom_name=actval
+      if param == "-facet":
+         facet_name=actval
       if param == "-el_symbols":
          el_sym_list=actval.split(",")
-      if param == "-natoms":
-         el_num_list=actval.split(",")
+      if param == "-unit_x":
+         unit_x=int(actval)
+      if param == "-unit_y":
+         unit_y=int(actval)
+      if param == "-unit_z":
+         unit_z=int(actval)
       if param == "-z_vac":
          z_vacuum=float(actval)
       if param == "-x_vac":
@@ -126,30 +151,71 @@ for arg in sys.argv:
       if param == "-unit_len":
          unit_len=float(actval) 
          
-if elnum <= 0:
-   print("At least one element must be given! (elnum > 0)")
-   sys.exit(1)
+#if elnum <= 0:
+#   print("At least one element must be given! (elnum > 0)")
+#   sys.exit(1)
 
-if elnum >= 5:
-   print("No more than four elements can be given! (elnum < 5)")
-   sys.exit(1)
+#if elnum >= 5:
+#   print("No more than four elements can be given! (elnum < 5)")
+#   sys.exit(1)
 
-if unit_num <= 0:
-   print("At least one unit must be given! (unit_num > 0)")
-   sys.exit(1)
 
-if len(el_sym_list) != elnum:
-   print("Please give a valid list of element symbols! (el_symbols)")
-   sys.exit(1)
+#if len(el_sym_list) != elnum:
+#   print("Please give a valid list of element symbols! (el_symbols)")
+#   sys.exit(1)
  
-if len(el_num_list) != elnum:           
-   print("Please give a valid list of element atom numbers! (natoms)")
-   sys.exit(1)
+#if len(el_num_list) != elnum:           
+#   print("Please give a valid list of element atom numbers! (natoms)")
+#   sys.exit(1)
+
+if geom_name == "fcc":
+   if facet_name == "111":
+      fac_name = "111"
+   elif facet_name == "100":
+      fac_name = "100"
+   elif facet_name == "110":
+      fac_name = "110"
+   elif facet_name == "default":
+      fac_name = "111"
+   else: 
+      print("Please give a valid surface facet! (-facet)")
+      sys.exit(1)
+elif geom_name == "hcp":
+   if facet_name == "0001":
+      fac_name = "0001"
+   elif facet_name == "10-10":
+      fac_name = "10-10"
+   elif facet_name == "10-11":
+      fac_name = "10-11"
+   elif facet_name == "default":
+      fac_name = "0001"
+   else:
+      print("Please give a valid surface facet! (-facet)")
+      sys.exit(1)
+elif geom_name == "sc":
+   if facet_name == "100":
+      fac_name = "100"
+   elif facet_name == "110":
+      fac_name = "110"
+   elif facet_name == "111":
+      fac_name = "111"
+   elif facet_name == "default":
+      fac_name = "100"
+   else:
+      print("Please give a valid surface facet! (-facet)")
+      sys.exit(1)
+else:
+   print("Please give a valid unit cell geometry! (-geometry)")
+   sys.exit(1)      
 
 
 print("Given settings:")
+print(" - Geometry of the unit cell: ",geom_name)
+print(" - Chosen surface facet (z-direction): ",fac_name)
 print(" - Number of elements (-elnum):              ",str(elnum))
-print(" - Number of units along x/y (-unit_num):    ",str(unit_num))
+print(" - Number of atoms along x/a axis (-unit_x)  ",str(unit_x))
+print(" - Number of atoms along y/b axis (-unit_y)  ",str(unit_y))
+print(" - Number of atoms along z/c axis (-unit_z)  ",str(unit_z))
 print(" - Vacuum along x-axis (-z_vac):             ",str(x_vacuum))
 print(" - Vacuum along y-axis (-y_vac):             ",str(y_vacuum))
 print(" - Vacuum along z-axis (-z_vac):             ",str(z_vacuum))

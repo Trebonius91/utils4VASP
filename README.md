@@ -31,19 +31,14 @@ Currently included are:
  - **analyze_poscar.py** : Analyze POSCAR, generate KPOINTS and POTCAR
  - **build_alloy.py**: Build regular alloy structures of various shapes
  - **modify_poscar.py** : Modify POSCAR: multiply, transform, shift, insert etc.
- - **cut_unitcell** : Generate surface slab unit cells of arbitrary shape
  - **build_adsorb.py** : Place adsorbates on surfaces, set translation, rotation
  - **split_freq** : Divide frequency calculations for large molecules
 
 ## Evaluation:
  - **modify_xdatcar** : Modify trajectory files: multiply, shift, pick etc.
- - **analyze_bulk** : Analyze bulk MD trajectories for RDFs, diffusion etc.
- - **analyze_slab** : Analyze slab MD trajectories for RDFs, density etc.
+ - **analyze_md** : Analyze MD trajectories for RDFs, diffusion, density etc.
+ - **analyze_dft** : Analyze DFT caculations (Bader cahrges, STM, CLS, pDOS)
  - **check_geoopt.py** : Monitor geometry optimizations with selective dynamics
- - **manage_cls** : Prepare, evaluate core level energy calculations
- - **eval_bader** : Evaluate and visualize Bader charge calculations
- - **eval_stm** : Generate STM images with different settings
- - **partial_dos** : Plot atom and orbital resolved density of states
  - **manage_neb.py** : Setup, monitor and restart NEB calculations
 
 ## ML-FF

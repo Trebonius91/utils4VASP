@@ -75,7 +75,8 @@ The script must be called with a number of command line parameters.
    not given, always the first of the options for the package 
    is chosen. 
  -el_symbols=[list] : List of element symbols for the contained elements
- -elnum=[number] : The number of different elements in the system (max: 4)
+ -el_freq=[list] : Relative frequency of the elements in the list 
+   (arbitrary numbers are possible, internally normalized)
  -unit_x=[number] : Number of atoms along the x axis (or a axis)
  -unit_y=[number] : Number of atoms along the y axis (or b acis)
  -unit_z=[number] : Number of atoms along the z axis (or c axis)
@@ -119,7 +120,7 @@ elnum=0
 unit_num=0
 el_sym_list=""
 el_num_list=""
-
+el_freq_list=[]
 
 for arg in sys.argv:
    if re.search("=",arg):
@@ -130,6 +131,8 @@ for arg in sys.argv:
          facet_name=actval
       if param == "-el_symbols":
          el_sym_list=actval.split(",")
+      if param == "-el_freq":
+         el_freq_list=float_arr = list(map(float, actval.split(",")))
       if param == "-unit_x":
          unit_x=int(actval)
       if param == "-unit_y":
@@ -151,23 +154,41 @@ for arg in sys.argv:
       if param == "-unit_len":
          unit_len=float(actval) 
          
-#if elnum <= 0:
-#   print("At least one element must be given! (elnum > 0)")
-#   sys.exit(1)
 
-#if elnum >= 5:
-#   print("No more than four elements can be given! (elnum < 5)")
-#   sys.exit(1)
-
-
-#if len(el_sym_list) != elnum:
-#   print("Please give a valid list of element symbols! (el_symbols)")
-#   sys.exit(1)
+#
+#    Determine the number of atoms per element from the frequency
+#
+elnum=len(el_sym_list)
+natoms=unit_x*unit_y*unit_z
+if elnum == 1:
+   el_freq_list=[]
+   el_freq_list.append("1.0")
+else:
+   norm=(sum(el_freq_list))
+   if norm == 0:
+      print("Plese give the relative element frequencies with -el_freq!\n")
+      sys.exit(1)
+   el_freq_list = np.array(el_freq_list) / norm
  
-#if len(el_num_list) != elnum:           
-#   print("Please give a valid list of element atom numbers! (natoms)")
-#   sys.exit(1)
+el_num_list=[]
+for i in range(elnum):
+   try:
+      el_num_list.append(int(float(el_freq_list[i])*natoms))
+   except Exception:
+      print("Please give a full list of element frequencies!\n")
+      sys.exit(1)
+   if el_num_list[i] == 0:
+      print("Species",i+1," has no atoms!\n")
+      sys.exit(1)
 
+while sum(el_num_list) < natoms:
+   el_num_list[el_num_list.index(max(el_num_list))]=el_num_list[el_num_list.index(max(el_num_list))]+1
+while sum(el_num_list) > natoms:
+   el_num_list[el_num_list.index(max(el_num_list))]=el_num_list[el_num_list.index(max(el_num_list))]-1
+
+#
+#    Define the geometry and facet from the input and default values
+#
 if geom_name == "fcc":
    if facet_name == "111":
       fac_name = "111"
@@ -178,7 +199,7 @@ if geom_name == "fcc":
    elif facet_name == "default":
       fac_name = "111"
    else: 
-      print("Please give a valid surface facet! (-facet)")
+      print("Please give a valid surface facet! (-facet)\n")
       sys.exit(1)
 elif geom_name == "hcp":
    if facet_name == "0001":
@@ -221,348 +242,166 @@ print(" - Vacuum along y-axis (-y_vac):             ",str(y_vacuum))
 print(" - Vacuum along z-axis (-z_vac):             ",str(z_vacuum))
 print(" - Length of a unit cell/Ang. (-unit_len):   ",str(unit_len))
 
-#
-#    Set element symbols and numbers, calculate total number of atoms
-#
-el1=el_sym_list[0]
-natoms1=int(el_num_list[0])
-natoms=natoms1
-if (elnum > 1):
-   el2=el_sym_list[1]
-   natoms2=int(el_num_list[1])
-   natoms=natoms1+natoms2
-if (elnum > 2):
-   el3=el_sym_list[2]
-   natoms3=int(el_num_list[2])
-   natoms=natoms1+natoms2+natoms3
-if (elnum > 3):
-   el4=el_sym_list[3]
-   natoms4=int(el_num_list[3])
-   natoms=natoms1+natoms2+natoms3+natoms4
 
 
 print(" - Total number of atoms:                    ",str(natoms))
-print(" - Element 1:                                ",str(el1), "  (",str(natoms1)," atoms)")
-if elnum > 1:
-   print(" - Element 2:                                ",str(el2), "  (",str(natoms2)," atoms)")
-if elnum > 2:
-   print(" - Element 3:                                ",str(el3), "  (",str(natoms3)," atoms)")
-if elnum > 3:
-   print(" - Element 4:                                ",str(el4), "  (",str(natoms4)," atoms)")
+for i in range(elnum):
+   print(" - Element ",i+1,":                              ",str(el_sym_list[i]),"  (",str(el_num_list[i]),"atoms)")
 
 
 #
-#    Number of z-repetitions: ceil of total natoms divided by number of atoms 
-#    per z-layer
+#    Set the unit cell size and shape of the POSCAR depending 
+#    on the used geometry and facet
 #
-z_layers = int(natoms/(unit_num**2))
-if z_layers*unit_num**2 < natoms:
-   z_layers= z_layers + 1
+a_vec=np.zeros((3))
+b_vec=np.zeros((3))
+c_vec=np.zeros((3))
 
-print (" - Number of atoms in x dimension:           ",str(unit_num))
-print (" - Number of atoms in y dimension:           ",str(unit_num))
-print (" - Number of atoms in z dimension:           ",str(z_layers))
+if geom_name == "fcc":
+   if fac_name == "111":
+      a_vec[0]=unit_x*unit_len
+      b_vec[0]=(unit_y*unit_len+x_vacuum)/2.0
+      b_vec[1]=(unit_y*unit_len*np.sqrt(3)+y_vacuum)/2.0   
+      c_vec[2]=unit_z*unit_len+z_vacuum
+   elif fac_name == "100":
+      a_vec[0]=unit_x*unit_len+x_vacuum
+      b_vec[1]=unit_y*unit_len+y_vacuum
+      c_vec[2]=unit_z*unit_len+z_vacuum
+   elif fac_name == "110":
+      a_vec[0]=unit_x*unit_len*np.sqrt(2.0)+x_vacuum
+      b_vec[1]=unit_y*unit_len+y_vacuum
+      c_vec[2]=unit_z*unit_len+z_vacuum
 
 
-xlen = unit_len * unit_num + x_vacuum
-ylen = unit_len * unit_num + y_vacuum
-zlen = unit_len * z_layers + z_vacuum
 
+x_len=np.linalg.norm(a_vec)
+y_len=np.linalg.norm(b_vec)
+z_len=np.linalg.norm(c_vec)
 
-print(" - Length of the x-axis (Ang.):              ",str(xlen))
-print(" - Length of the y-axis (Ang.):              ",str(ylen))
-print(" - Length of the z-axis (Ang.):              ",str(zlen))
+print(" - Length of the x-axis (Ang.):              ",str(x_len))
+print(" - Length of the y-axis (Ang.):              ",str(y_len))
+print(" - Length of the z-axis (Ang.):              ",str(z_len))
 print(" - Shift along x-axis (-x_shift):            ",str(x_shift))
 print(" - Shift along y-axis (-y_shift):            ",str(y_shift))
 print(" - Shift along z-axis (-z_shift):            ",str(z_shift))
-#
-#    Build up the coordinates of the atoms 
-#
-at1_xyz = np.zeros((3,natoms1))
-if elnum > 1:
-   at2_xyz = np.zeros((3,natoms2))
-   at1_frac = float(natoms1)/float(natoms)
-if elnum > 2:
-   at2_frac = float(natoms1+natoms2)/float(natoms)
-   at3_xyz = np.zeros((3,natoms3))  
-if elnum > 3:
-   at3_frac = float(natoms1+natoms2+natoms3)/float(natoms)
-   at4_xyz = np.zeros((3,natoms4))
-   
-
-done = False
-at1_act = 0
-at2_act = 0
-at3_act = 0
-at4_act = 0
-for i in range (z_layers):  # z axis
-   for j in range (unit_num):  # x-axis
-      for k in range (unit_num): # y-axis
-         pos_act = [offset+unit_len*j+x_shift,offset+unit_len*k+y_shift,
-                  offset+unit_len*i+z_shift] 
-         randnum=random.random()
-         if at1_act+at2_act+at3_act >= natoms:
-             done = True
-             break
-#
-#    If ony one element is there, the buildup is really easy
-#
-         if (elnum == 1):
-            at1_act = at1_act + 1  
-            at1_xyz[0][at1_act-1] = pos_act[0]
-            at1_xyz[1][at1_act-1] = pos_act[1]
-            at1_xyz[2][at1_act-1] = pos_act[2]
- 
-#
-#    If the random number is in the lower part of the interval, place 
-#    a Ga, atom, unless already all have been built
-#
-         if (elnum == 2):
-            if randnum <= at1_frac:
-               at1_act = at1_act + 1
-               if at1_act <= natoms1:
-                  at1_xyz[0][at1_act-1] = pos_act[0]
-                  at1_xyz[1][at1_act-1] = pos_act[1]
-                  at1_xyz[2][at1_act-1] = pos_act[2]
-               else:
-                  at2_act = at2_act + 1
-                  at1_act = at1_act - 1
-                  at2_xyz[0][at2_act-1] = pos_act[0]
-                  at2_xyz[1][at2_act-1] = pos_act[1]
-                  at2_xyz[2][at2_act-1] = pos_act[2]
-            else:    
-               at2_act = at2_act + 1
-               if at2_act <= natoms2:
-                  at2_xyz[0][at2_act-1] = pos_act[0]
-                  at2_xyz[1][at2_act-1] = pos_act[1]
-                  at2_xyz[2][at2_act-1] = pos_act[2]
-               else:
-                  at1_act = at1_act + 1
-                  at2_act = at2_act - 1
-                  at1_xyz[0][at1_act-1] = pos_act[0]
-                  at1_xyz[1][at1_act-1] = pos_act[1]
-                  at1_xyz[2][at1_act-1] = pos_act[2]
-         elif (elnum == 3):    
-            if randnum <= at1_frac:
-               at1_act = at1_act + 1
-               if at1_act <= natoms1:
-                  at1_xyz[0][at1_act-1] = pos_act[0]
-                  at1_xyz[1][at1_act-1] = pos_act[1]
-                  at1_xyz[2][at1_act-1] = pos_act[2]
-               else:
-                  if at3_act < natoms3:
-                     at3_act = at3_act + 1
-                     at1_act = at1_act - 1
-                     at3_xyz[0][at3_act-1] = pos_act[0]
-                     at3_xyz[1][at3_act-1] = pos_act[1]
-                     at3_xyz[2][at3_act-1] = pos_act[2]
-                  else:  
-                     at2_act = at2_act + 1
-                     at1_act = at1_act - 1
-                     at2_xyz[0][at2_act-1] = pos_act[0]
-                     at2_xyz[1][at2_act-1] = pos_act[1]
-                     at2_xyz[2][at2_act-1] = pos_act[2]
-
-            elif randnum <= at2_frac:
-               at2_act = at2_act + 1
-               if at2_act <= natoms2:
-                  at2_xyz[0][at2_act-1] = pos_act[0]
-                  at2_xyz[1][at2_act-1] = pos_act[1]
-                  at2_xyz[2][at2_act-1] = pos_act[2]
-               else:
-                  if at1_act < natoms1: 
-                     at1_act = at1_act + 1
-                     at2_act = at2_act - 1
-                     at1_xyz[0][at1_act-1] = pos_act[0]
-                     at1_xyz[1][at1_act-1] = pos_act[1]
-                     at1_xyz[2][at1_act-1] = pos_act[2]
-                  else:
-                     at3_act = at3_act + 1
-                     at2_act = at2_act - 1
-                     at3_xyz[0][at3_act-1] = pos_act[0]
-                     at3_xyz[1][at3_act-1] = pos_act[1]
-                     at3_xyz[2][at3_act-1] = pos_act[2]
-            else:
-               at3_act = at3_act + 1
-               if at3_act <= natoms3:
-                  at3_xyz[0][at3_act-1] = pos_act[0]
-                  at3_xyz[1][at3_act-1] = pos_act[1]
-                  at3_xyz[2][at3_act-1] = pos_act[2]
-               else:
-                  if at1_act < natoms1:
-                     at1_act = at1_act + 1
-                     at3_act = at3_act - 1
-                     at1_xyz[0][at1_act-1] = pos_act[0]
-                     at1_xyz[1][at1_act-1] = pos_act[1]
-                     at1_xyz[2][at1_act-1] = pos_act[2]
-                  else:
-                     at2_act = at2_act + 1
-                     at3_act = at3_act - 1
-                     at2_xyz[0][at2_act-1] = pos_act[0]
-                     at2_xyz[1][at2_act-1] = pos_act[1]
-                     at2_xyz[2][at2_act-1] = pos_act[2]
-         elif (elnum == 4):
-            if randnum <= at1_frac:
-               at1_act = at1_act + 1
-               if at1_act <= natoms1:
-                  at1_xyz[0][at1_act-1] = pos_act[0]
-                  at1_xyz[1][at1_act-1] = pos_act[1]
-                  at1_xyz[2][at1_act-1] = pos_act[2]
-               else:
-                  if at4_act < natoms4:
-                     at4_act = at4_act + 1
-                     at1_act = at1_act - 1
-                     at4_xyz[0][at4_act-1] = pos_act[0]
-                     at4_xyz[1][at4_act-1] = pos_act[1]
-                     at4_xyz[2][at4_act-1] = pos_act[2]
-                  elif at3_act < natoms3:
-                     at3_act = at3_act + 1
-                     at1_act = at1_act - 1
-                     at3_xyz[0][at3_act-1] = pos_act[0]
-                     at3_xyz[1][at3_act-1] = pos_act[1]
-                     at3_xyz[2][at3_act-1] = pos_act[2]
-                  else:
-                     at2_act = at2_act + 1
-                     at1_act = at1_act - 1
-                     at2_xyz[0][at2_act-1] = pos_act[0]
-                     at2_xyz[1][at2_act-1] = pos_act[1]
-                     at2_xyz[2][at2_act-1] = pos_act[2]
-            elif randnum <= at2_frac:
-               at2_act = at2_act + 1
-               if at2_act <= natoms2:
-                  at2_xyz[0][at2_act-1] = pos_act[0]
-                  at2_xyz[1][at2_act-1] = pos_act[1]
-                  at2_xyz[2][at2_act-1] = pos_act[2]
-               else:
-                  if at1_act < natoms1:
-                     at1_act = at1_act + 1
-                     at2_act = at2_act - 1
-                     at1_xyz[0][at1_act-1] = pos_act[0]
-                     at1_xyz[1][at1_act-1] = pos_act[1]
-                     at1_xyz[2][at1_act-1] = pos_act[2]
-                  elif at3_act < natoms3:
-                     at3_act = at3_act + 1
-                     at1_act = at1_act - 1
-                     at3_xyz[0][at3_act-1] = pos_act[0]
-                     at3_xyz[1][at3_act-1] = pos_act[1]
-                     at3_xyz[2][at3_act-1] = pos_act[2]
-                  else:
-                     at4_act = at4_act + 1
-                     at2_act = at2_act - 1
-                     at4_xyz[0][at4_act-1] = pos_act[0]
-                     at4_xyz[1][at4_act-1] = pos_act[1]
-                     at4_xyz[2][at4_act-1] = pos_act[2]
-            elif randnum <= at3_frac:
-               at3_act = at3_act + 1
-               if at3_act <= natoms3:
-                  at3_xyz[0][at3_act-1] = pos_act[0]
-                  at3_xyz[1][at3_act-1] = pos_act[1]
-                  at3_xyz[2][at3_act-1] = pos_act[2]
-               else:
-                  if at1_act < natoms1:
-                     at1_act = at1_act + 1
-                     at3_act = at3_act - 1
-                     at1_xyz[0][at1_act-1] = pos_act[0]
-                     at1_xyz[1][at1_act-1] = pos_act[1]
-                     at1_xyz[2][at1_act-1] = pos_act[2]
-                  elif at2_act < natoms2:
-                     at2_act = at2_act + 1
-                     at3_act = at3_act - 1
-                     at2_xyz[0][at2_act-1] = pos_act[0]
-                     at2_xyz[1][at2_act-1] = pos_act[1]
-                     at2_xyz[2][at2_act-1] = pos_act[2]
-                  else:
-                     at4_act = at4_act + 1
-                     at3_act = at3_act - 1
-                     at4_xyz[0][at4_act-1] = pos_act[0]
-                     at4_xyz[1][at4_act-1] = pos_act[1]
-                     at4_xyz[2][at4_act-1] = pos_act[2]
-            else:
-               at4_act = at4_act + 1
-               if at4_act <= natoms4:
-                  at4_xyz[0][at4_act-1] = pos_act[0]
-                  at4_xyz[1][at4_act-1] = pos_act[1]
-                  at4_xyz[2][at4_act-1] = pos_act[2]
-               else:
-                  if at1_act < natoms1:
-                     at1_act = at1_act + 1
-                     at4_act = at4_act - 1
-                     at1_xyz[0][at1_act-1] = pos_act[0]
-                     at1_xyz[1][at1_act-1] = pos_act[1]
-                     at1_xyz[2][at1_act-1] = pos_act[2]
-                  elif at2_act < natoms2:
-                     at2_act = at2_act + 1
-                     at4_act = at4_act - 1
-                     at2_xyz[0][at2_act-1] = pos_act[0]
-                     at2_xyz[1][at2_act-1] = pos_act[1]
-                     at2_xyz[2][at2_act-1] = pos_act[2]
-                  else:
-                     at3_act = at3_act + 1
-                     at4_act = at4_act - 1
-                     at3_xyz[0][at3_act-1] = pos_act[0]
-                     at3_xyz[1][at3_act-1] = pos_act[1]
-                     at3_xyz[2][at3_act-1] = pos_act[2]
-                     
-
-
-
-      if done:
-         break
-   if done:
-      break
 
 #
-#    Now write the new POSCAR file 
+#    Assign an element species to each atom in the system, which are 
+#    thought to be in a 1D list, which will later be combined with 
+#    the positions in the unit cell grid
 #
 
+el_list = list(range(natoms)) 
+#
+#    Create assigned list with element species
+#
+el_labels = np.repeat(el_sym_list,el_num_list)
+
+#
+#    Shuffle the list randomly
+#
+random.shuffle(el_labels)
+#
+#    Pair objects with species (might be needed sometimes)
+#
+assignment = list(zip(el_list, el_labels))
+
+
+#
+#    Now build the positions of the atoms, depending on the 
+#    used unit cell shape, in internal coordinates first
+#
+
+pos_all=np.zeros((natoms,3))
+pos_act=np.zeros((3))
+inc=0
+if geom_name == "fcc":
+   if fac_name == "111":
+      for i in range(unit_x):
+         for j in range(unit_y):
+            z_count=0
+            for k in range (unit_z):
+                if z_count == 0:
+                   pos_act[0]=(0.0+i)/unit_x*(x_len-x_vacuum)/x_len
+                   pos_act[1]=(0.0+j)/unit_y*(y_len-y_vacuum)/y_len
+                   pos_act[2]=(0.0+k)/unit_z*(z_len-z_vacuum)/z_len
+                elif z_count == 1:
+                   pos_act[0]=(0.33333333333+i)/unit_x*(x_len-x_vacuum)/x_len
+                   pos_act[1]=(0.66666666666+j)/unit_y*(y_len-y_vacuum)/y_len
+                   pos_act[2]=(0.0+k)/unit_z*(z_len-z_vacuum)/z_len
+                elif z_count == 2:
+                   pos_act[0]=(0.66666666666+i)/unit_x*(x_len-x_vacuum)/x_len
+                   pos_act[1]=(0.33333333333+j)/unit_y*(y_len-y_vacuum)/y_len
+                   pos_act[2]=(0.0+k)/unit_z*(z_len-z_vacuum)/z_len
+                z_count=z_count+1
+                if z_count > 2:
+                   z_count=0
+                pos_all[inc,:]=pos_act
+                inc=inc+1
+   elif fac_name == "100":
+      for i in range(unit_x):
+         for j in range(unit_y):
+            z_count=0
+            for k in range (unit_z):
+                if z_count == 0:
+                   pos_act[0]=(0.0+i)/unit_x*(x_len-x_vacuum)/x_len
+                   pos_act[1]=(0.0+j)/unit_y*(y_len-y_vacuum)/y_len
+                   pos_act[2]=(0.0+k)/unit_z*(z_len-z_vacuum)/z_len
+                elif z_count == 1:
+                   pos_act[0]=(0.5+i)/unit_x*(x_len-x_vacuum)/x_len
+                   pos_act[1]=(0.5+j)/unit_y*(y_len-y_vacuum)/y_len
+                   pos_act[2]=(0.0+k)/unit_z*(z_len-z_vacuum)/z_len
+                z_count=z_count+1
+                if z_count > 1:
+                   z_count=0
+                pos_all[inc,:]=pos_act
+                inc=inc+1
+   elif fac_name == "110":
+      for i in range(unit_x):
+         for j in range(unit_y):
+            z_count=0
+            for k in range (unit_z):
+                if z_count == 0:
+                   pos_act[0]=(0.5+i)/unit_x*(x_len-x_vacuum)/x_len
+                   pos_act[1]=(0.5+j)/unit_y*(y_len-y_vacuum)/y_len
+                   pos_act[2]=(0.0+k)/unit_z*(z_len-z_vacuum)/z_len
+                elif z_count == 1:
+                   pos_act[0]=(0.0+i)/unit_x*(x_len-x_vacuum)/x_len
+                   pos_act[1]=(0.0+j)/unit_y*(y_len-y_vacuum)/y_len
+                   pos_act[2]=(0.0+k)/unit_z*(z_len-z_vacuum)/z_len
+                z_count=z_count+1
+                if z_count > 1:
+                   z_count=0
+                pos_all[inc,:]=pos_act
+                inc=inc+1
+
+
+#
+#    Now write the actual POSCAR!
+#
 original_stdout=sys.stdout
 with open("POSCAR","w") as f:
    sys.stdout = f
-
+   print("New POSCAR written by gen_poscar (",geom_name,",",fac_name,"facet(z-direction))")
+   print("1.0")
+   print(a_vec[0],a_vec[1],a_vec[2])
+   print(b_vec[0],b_vec[1],b_vec[2])
+   print(c_vec[0],c_vec[1],c_vec[2])   
+   print(" ".join(el_sym_list))
+   print(" ".join(map(str,el_num_list)))
+   print("Direct")
    if elnum == 1:
-      print("alloy system: " + el1 + str(natoms1))
-   if elnum == 2:
-      print("alloy system: " + el1 + str(natoms1) + el2 + str(natoms2)) 
-   if elnum == 3:
-      print("alloy system: " + el1 + str(natoms1) + el2 + str(natoms2) + el3 +str(natoms3)) 
-   if elnum == 4:
-      print("alloy system: " + el1 + str(natoms1) + el2 + str(natoms2) + el3 +str(natoms3) + el4 +str(natoms4))
-      
-   print(" 1 ")
-   print("  " + str(xlen) + "  0.0   0.0")
-   print(" 0.0 " + str(ylen) + " 0.0")
-   print(" 0.0    0.0  " + str(zlen))
-   if elnum == 1:
-      print("  " + el1)
-      print("  " + str(natoms1))
-   if elnum == 2:
-      print("  " + el1 + "  " + el2)
-      print("  " + str(natoms1) + "  " + str(natoms2))
-   elif elnum == 3:
-      print("  " + el1 + "  " + el2 + "  " + el3) 
-      print("  " + str(natoms1) + "  " + str(natoms2) +  "  " + str(natoms3)) 
-   elif elnum == 4:
-      print("  " + el1 + "  " + el2 + "  " + el3 + "  " + el4)
-      print("  " + str(natoms1) + "  " + str(natoms2) +  "  " + str(natoms3) +  "  " + str(natoms4))
-
-
-   print("Cartesian")
-   for i in range(natoms1):
-      print("  " + str(at1_xyz[0][i]) + " " + str(at1_xyz[1][i]) + " " + str(at1_xyz[2][i]))
-   if elnum > 1:   
-      for i in range(natoms2):
-         print("  " + str(at2_xyz[0][i]) + " " + str(at2_xyz[1][i]) + " " + str(at2_xyz[2][i])) 
-   if elnum > 2:
-      for i in range(natoms3):
-         print("  " + str(at3_xyz[0][i]) + " " + str(at3_xyz[1][i]) + " " + str(at3_xyz[2][i]))
-   if elnum > 3:
-      for i in range(natoms4):
-         print("  " + str(at4_xyz[0][i]) + " " + str(at4_xyz[1][i]) + " " + str(at4_xyz[2][i]))
-
+      for i in range(natoms):
+         print(pos_all[i][0], pos_all[i][1], pos_all[i][2])
+   else:
+      for i in range(elnum):
+         for j in range(natoms):
+            if assignment[j][1] == el_sym_list[i]:
+               print(pos_all[j][0], pos_all[j][1], pos_all[j][2])
 
 sys.stdout = original_stdout
 
 print("""
-build_alloy.py has finished! A POSCAR file with your system was written!
+gen_poscar.py has finished! A POSCAR file with your system was written!
 """)
 

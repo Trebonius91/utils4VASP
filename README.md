@@ -18,11 +18,25 @@ of surface or bulk systems.
 
 A description of all scripts/programs as well as an overview of important VASP calculations and how to do them is given in the [utils4VASP-Wiki](https://github.com/Trebonius91/utils4VASP/wiki)!
 
-The scripts and programs are grouped by the area of application (setup, evaluation, ML-FF, management).
+The scripts and programs are grouped by the area of application (setup, evaluation, ML-FF, management) and stored into subdirectories of those names in the utils4VASP directory.
 Fortran programs have no file ending, ".py" are Python scripts, ".sh" are Bash shell scripts
 
 The Fortran programs are compiled by the Makefile given in the main directory. 
-Modify it if needed and then type 'make' to build all Fortran programs.
+By default, the compilation is done with gfortran, utilizing the intel MKL libraries for Lapack and Blas routines.
+Change the compiler (FC = ..) and linker flags (LFLAGS = ...) if needed for your system.
+
+Compilation is done as usual with the following command in the utils4VASP main folder:
+
+    make
+
+Further, all scripts and programs can be copied to a suitable directory to make them accessible systemwide. By default, this is the $HOME/bin directory, which can be changed by altering the (BINDIR = ...) flag in the Makefile. Installation then is done by:
+
+    make install
+
+Compiled fortran programs can be removed with:
+
+    make clean 
+
 
 Currently included are:
 

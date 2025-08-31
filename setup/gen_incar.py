@@ -13,8 +13,42 @@ import re
 import numpy as np
 from numpy import linalg as LA
 
+
 #
 #    only print the overview of utils4VASP scripts/programs and stop
+#
+for arg in sys.argv:
+   if arg == "-overview":
+      print('''
+utils4VASP: Setup and Evaluation of DFT and MLP simulations with VASP
+The following scripts and programs are contained:
+Setup:
+ - gen_incar.py: Generate INCAR file templates for several job types
+ - gen_poscar.py: Generate POSCAR of alloy and surface structures
+ - analyze_poscar.py: Analyze POSCAR, generate KPOINTS and POTCAR
+ - modify_poscar.py: Modify POSCAR: multiply, transform, shift, insert etc.
+ - build_adsorb.py: Place adsorbates on surfaces, set translation, rotation
+ - split_freq: Divide frequency calculations for large molecules
+Evaluation:
+ - modify_xdatcar: Modify trajectory files: multiply, shift, pick etc.
+ - analyze_md: Analyze MD trajectories for RDFs, diffusion, density etc.
+ - analyze_dft: Analyze DFT calculations (Bader charges, STM, CLS, pDOS)
+ - check_geoopt.py: Monitor geometry optimizations with selective dynamics
+ - manage_neb.py: Setup, monitor and restart NEB calculations
+ML-FF:
+ - mlff_select: Heuristic selection of local reference configurations
+ - vasp2trainset: Generate ML-FF training sets from VASP calculations
+ - mlp_quality: Determine quality of MLPs for VASP validation set
+Management:
+ - md_long.sh: Automated restart of MD calculations with slurm
+ - opt_long.sh: Automated restart of geometry optimizations with slurm
+ - ml_long.sh: Automated restart of VASP ML-FF on the fly learnings
+ - mace_long.sh: Automated restart of MACE MD trajectories with ASE
+''')
+      sys.exit(0)
+
+#
+#    Print general information and all possible keywords of the program    
 #
 print('''
  This script generates INCAR files for a large variety of different 
@@ -45,7 +79,7 @@ print('''
 ''')
 
 #
-#    Print general information and all possible keywords of the program    
+#    Print INCAR header for periodic DFT calculations    
 #
 header = '''
 # Enter the name of your system here: 
@@ -257,7 +291,8 @@ DIPOL = 0.5 0.5 0.5
 
 # No symmetry applied, important for more than one node!
 ISYM = -1               
-         ''')               
+         ''')     
+      sys.stdout=original_stdout          
    elif arg == "-solvation":
       print(" An INCAR for an implicit solvation calculation is written.")
       original_stdout=sys.stdout
@@ -300,6 +335,7 @@ NEDOS = 1001
 # The highest energy (KS-eigenvalue), end point of DOS plot
 # EMAX = 10.0
          ''')
+      sys.stdout=original_stdout
    elif arg == "-band":
       print(" An INCAR for a band structure calculation is written.")
       original_stdout=sys.stdout
@@ -371,6 +407,28 @@ CLL = [number]
 
 # The number of electrons to be excited from the orbital, 0.5 is good
 CLZ = 0.5               
+         ''')
+      sys.stdout=original_stdout
+   elif arg == "-stm":
+      print(" An INCAR for a STM image calculation is written.")
+      original_stdout=sys.stdout
+      with incar as outfile:
+         sys.stdout = outfile
+         print("# This is a STM image calculation")
+         print(header)
+         print('''
+# Evaluate partial charge density
+LPARD = .TRUE.
+
+# Read in the existent WAVECAR file instead of SCF calcuation
+ISTART = 1
+
+# The energy range for partial charge density 
+# (first value experimental STM current (*-1), second zero)
+EINT = -1 0
+
+# Calculate partial charge density in an energy range given by EINT
+NBMOD = -3
          ''')
       sys.stdout=original_stdout
    elif arg == "-neb":

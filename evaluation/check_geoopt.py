@@ -36,6 +36,60 @@ import math
 import re
 import subprocess
 
+
+
+#
+#    only print the overview of utils4VASP scripts/programs and stop
+#
+for arg in sys.argv:
+   if arg == "-overview":
+      print('''
+utils4VASP: Setup and Evaluation of DFT and MLP simulations with VASP
+The following scripts and programs are contained:
+Setup:
+ - gen_incar.py: Generate INCAR file templates for several job types
+ - gen_poscar.py: Generate POSCAR of alloy and surface structures
+ - analyze_poscar.py: Analyze POSCAR, generate KPOINTS and POTCAR
+ - modify_poscar.py: Modify POSCAR: multiply, transform, shift, insert etc.
+ - build_adsorb.py: Place adsorbates on surfaces, set translation, rotation
+ - split_freq: Divide frequency calculations for large molecules
+Evaluation:
+ - modify_xdatcar: Modify trajectory files: multiply, shift, pick etc.
+ - analyze_md: Analyze MD trajectories for RDFs, diffusion, density etc.
+ - analyze_dft: Analyze DFT calculations (Bader charges, STM, CLS, pDOS)
+ - check_geoopt.py: Monitor geometry optimizations with selective dynamics
+ - manage_neb.py: Setup, monitor and restart NEB calculations
+ML-FF:
+ - mlff_select: Heuristic selection of local reference configurations
+ - vasp2trainset: Generate ML-FF training sets from VASP calculations
+ - mlp_quality: Determine quality of MLPs for VASP validation set
+Management:
+ - md_long.sh: Automated restart of MD calculations with slurm
+ - opt_long.sh: Automated restart of geometry optimizations with slurm
+ - ml_long.sh: Automated restart of VASP ML-FF on the fly learnings
+ - mace_long.sh: Automated restart of MACE MD trajectories with ASE
+''')
+      sys.exit(0)
+
+#
+#    Print general information and all possible keywords of the program    
+#
+print('''
+This script evaluates the process of a VASP geometry optimization,
+by returning the total energy, largest force component, volume, spin
+etc. of each ionic update step and writes them to file check_geoopt.log.
+For selective dynamics, only force components of activated degrees of 
+freedom are considered.
+
+Usage: check_geoopt.py [OUTCAR-file]
+
+Tip: this script can also be used to analyze AIMD calculations by applying
+this script to their OUTCAR file.
+
+Give -overview  to print an overview of utils4VASP scripts/programs
+
+''')
+
 from optparse import OptionParser
 
 def get_number_of_atoms(where):

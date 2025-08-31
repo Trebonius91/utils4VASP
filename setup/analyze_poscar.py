@@ -24,25 +24,19 @@ utils4VASP: Setup and Evaluation of DFT and MLP simulations with VASP
 The following scripts and programs are contained:
 Setup:
  - gen_incar.py: Generate INCAR file templates for several job types
+ - gen_poscar.py: Generate POSCAR of alloy and surface structures
  - analyze_poscar.py: Analyze POSCAR, generate KPOINTS and POTCAR
- - build_alloy.py: Build regular alloy structures of various shapes
  - modify_poscar.py: Modify POSCAR: multiply, transform, shift, insert etc.
- - cut_unitcell: Generate surface slab unit cells of arbitrary shape
  - build_adsorb.py: Place adsorbates on surfaces, set translation, rotation
  - split_freq: Divide frequency calculations for large molecules
 Evaluation:
  - modify_xdatcar: Modify trajectory files: multiply, shift, pick etc.
- - analyze_bulk: Analyze bulk MD trajectories for RDFs, diffusion etc.
- - analyze_slab: Analyze slab MD trajectories for RDFs, density etc.
+ - analyze_md: Analyze MD trajectories for RDFs, diffusion, density etc.
+ - analyze_dft: Analyze DFT calculations (Bader charges, STM, CLS, pDOS)
  - check_geoopt.py: Monitor geometry optimizations with selective dynamics
- - manage_cls: Prepare, evaluate core level energy calculations
- - eval_bader: Evaluate and visualize Bader charge calculations
- - eval_stm: Generate STM images with different settings
- - partial_dos: Plot atom and orbital resolved density of states
  - manage_neb.py: Setup, monitor and restart NEB calculations
 ML-FF:
  - mlff_select: Heuristic selection of local reference configurations
- - eval_vasp_ml.py: Visualize results of VASP ML-FF on the fly learnings
  - vasp2trainset: Generate ML-FF training sets from VASP calculations
  - mlp_quality: Determine quality of MLPs for VASP validation set
 Management:
@@ -447,22 +441,22 @@ if kpoints_job:
    volume=abs(triple_product)
 
 
-   kpoint_a_ex=np.linalg.norm(np.cross(b_np,c_np))/(volume*k_dens)
+   kpoint_a_ex=np.linalg.norm(np.cross(b_np,c_np))/(volume*float(k_dens))
    kpoint_a = round(kpoint_a_ex)
    if kpoint_a < 1:
       kpoint_a = 1
    print(" k-points along a-axis:",kpoint_a_ex," (rounded:",kpoint_a,")")
-   kpoint_b_ex=np.linalg.norm(np.cross(a_np,c_np))/(volume*k_dens)
+   kpoint_b_ex=np.linalg.norm(np.cross(a_np,c_np))/(volume*float(k_dens))
    kpoint_b = round(kpoint_b_ex)
    if kpoint_b < 1:
       kpoint_b = 1
    print(" k-points along b-axis:",kpoint_b_ex," (rounded:",kpoint_b,")")
-   kpoint_c_ex=np.linalg.norm(np.cross(a_np,b_np))/(volume*k_dens)
+   kpoint_c_ex=np.linalg.norm(np.cross(a_np,b_np))/(volume*float(k_dens))
    kpoint_c = round(kpoint_c_ex)
    if kpoint_c < 1:
       kpoint_c = 1
    print(" k-points along c-axis:",kpoint_c_ex," (rounded:",kpoint_c,")")
-   kpoint_c_ex=np.linalg.norm(np.cross(a_np,b_np))/(volume*k_dens)
+   kpoint_c_ex=np.linalg.norm(np.cross(a_np,b_np))/(volume*float(k_dens))
 
 #
 #    Check if vacuum exists in any of the three directions in space
@@ -552,7 +546,12 @@ if angle_job:
    ref_vector=np.zeros(3)
    if coord_plane == "xy":
       ref_vector=[(0,0,1)]
-  
+   elif coord_plane == "xz":
+      ref_vector=[(0,1,0)]
+   elif coord_plane == "yz":
+      ref_vector=[(1,0,0)]
+   else:
+      print("Please give a valid reference plane! (xy, xz or yz)")
 
    #  Determine the list of atom coordinates of the atoms to be fitted   
    points=np.zeros((len(atom_list),3))

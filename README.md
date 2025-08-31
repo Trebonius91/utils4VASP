@@ -11,10 +11,8 @@ Maximilian Bechtel, maxi.bechtel@fau.de
 
 ## General overview
 
-This repository contains a list of scripts and programs that can be used to set up, manage and evaluate VASP
-calcuations. It was initially designed to support calculations of liquid surface catalysts, 
-but the scripts and programs should be general enough to use them for arbitrary VASP calculations
-of surface or bulk systems.
+This repository contains a list of Python3 scripts and Fortran programs that can be used to set up, 
+manage and evaluate VASP calcuations, both periodic DFT and ML-FF. 
 
 A description of all scripts/programs as well as an overview of important VASP calculations and how to do them is given in the [utils4VASP-Wiki](https://github.com/Trebonius91/utils4VASP/wiki)!
 
@@ -22,8 +20,10 @@ The scripts and programs are grouped by the area of application (setup, evaluati
 Fortran programs have no file ending, ".py" are Python scripts, ".sh" are Bash shell scripts
 
 The Fortran programs are compiled by the Makefile given in the main directory. 
-By default, the compilation is done with gfortran, utilizing the intel MKL libraries for Lapack and Blas routines.
+By default, the compilation is done with gfortran, utilizing the intel MKL libraries for Lapack and BLAS routines.
 Change the compiler (FC = ..) and linker flags (LFLAGS = ...) if needed for your system.
+
+For the Python routines, only the numpy and scipy packages are needed besides the standard os, sys, re, random etc packagesthat are part of the Python3 installation itself.
 
 Compilation is done as usual with the following command in the utils4VASP main folder:
 

@@ -28,8 +28,8 @@ Currently included are:
 
 ## Setup:
  - **gen_incar.py** : Generate INCAR file templates for several job types
+ - **gen_poscar.py** : Generate POSCAR of alloy and surface structures
  - **analyze_poscar.py** : Analyze POSCAR, generate KPOINTS and POTCAR
- - **build_alloy.py**: Build regular alloy structures of various shapes
  - **modify_poscar.py** : Modify POSCAR: multiply, transform, shift, insert etc.
  - **build_adsorb.py** : Place adsorbates on surfaces, set translation, rotation
  - **split_freq** : Divide frequency calculations for large molecules

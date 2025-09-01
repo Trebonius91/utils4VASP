@@ -141,6 +141,7 @@ end do
 !    Print general information and all possible keywords of the program    
 !
 write(*,*)
+write(*,*) " *** utils4VASP -- utility scripts and programs for VASP ***"
 write(*,*) "PROGRAM analyze_md: Evaluation of VASP DFT/MLIP trajectories"
 write(*,*) " trajectories of bulk systems and surface slabs."
 write(*,*) "A trajectory can either be evaluates as a whole (results in folder"

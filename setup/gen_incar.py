@@ -51,7 +51,8 @@ Management:
 #    Print general information and all possible keywords of the program    
 #
 print('''
- This script generates INCAR files for a large variety of different 
+  *** utils4VASP -- utility scripts and programs for VASP ***
+ gen_incar.py: Generates INCAR files for a large variety of different 
  typical VASP calculations that are described in the utils4VASP Wiki.
  The INCAR files are given together with explanations for each keyword,
  allowing the user to change settings from the defaut values if needed.

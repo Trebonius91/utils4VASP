@@ -71,6 +71,7 @@ end do
 !    Print general information and all possible keywords of the program    
 !
 write(*,*)
+write(*,*) " *** utils4VASP -- utility scripts and programs for VASP ***"
 write(*,*) "PROGRAM modify_xdatcar: Modification of XDATCAR trajectory"
 write(*,*) " files for arbitrary systems."
 write(*,*) "The file XDATCAR must be present."

@@ -105,19 +105,25 @@ do i = 1, command_argument_count()
       write(*,*) "The following scripts and programs are contained:"
       write(*,*) "Setup:"
       write(*,*) " - gen_incar.py: Generate INCAR file templates for several job types"
-      write(*,*) " - gen_poscar.py: Generate POSCAR of alloy and surface structures"
       write(*,*) " - analyze_poscar.py: Analyze POSCAR, generate KPOINTS and POTCAR"
+      write(*,*) " - build_alloy.py: Build regular alloy structures of various shapes"
       write(*,*) " - modify_poscar.py: Modify POSCAR: multiply, transform, shift, insert etc."
+      write(*,*) " - cut_unitcell: Generate surface slab unit cells of arbitrary shape"
       write(*,*) " - build_adsorb.py: Place adsorbates on surfaces, set translation, rotation"
       write(*,*) " - split_freq: Divide frequency calculations for large molecules"
       write(*,*) "Evaluation:"
       write(*,*) " - modify_xdatcar: Modify trajectory files: multiply, shift, pick etc."
-      write(*,*) " - analyze_md: Analyze MD trajectories for RDFs, diffusion, density etc."
-      write(*,*) " - analyze_dft: Analyze DFT calculations (Bader charges, STM, CLS, pDOS)"
+      write(*,*) " - analyze_bulk: Analyze bulk MD trajectories for RDFs, diffusion etc."
+      write(*,*) " - analyze_slab: Analyze slab MD trajectories for RDFs, density etc."
       write(*,*) " - check_geoopt.py: Monitor geometry optimizations with selective dynamics"
+      write(*,*) " - manage_cls: Prepare, evaluate core level energy calculations"
+      write(*,*) " - eval_bader: Evaluate and visualize Bader charge calculations"
+      write(*,*) " - eval_stm: Generate STM images with different settings"
+      write(*,*) " - partial_dos: Plot atom and orbital resolved density of states"
       write(*,*) " - manage_neb.py: Setup, monitor and restart NEB calculations"
       write(*,*) "ML-FF:"
       write(*,*) " - mlff_select: Heuristic selection of local reference configurations"
+      write(*,*) " - eval_vasp_ml.py: Visualize results of VASP ML-FF on the fly learnings"
       write(*,*) " - vasp2trainset: Generate ML-FF training sets from VASP calculations"
       write(*,*) " - mlp_quality: Determine quality of MLPs for VASP validation set"
       write(*,*) "Management:"
@@ -576,7 +582,6 @@ do i=1,analyze_parts
          ylens_p(j)=ylen
          zlens_p(j)=zlen
       end if   
-            
    end do
    frame_shift=frame_shift+frames_part(i)
 !
@@ -1183,7 +1188,7 @@ real(kind=8),allocatable::neighnum(:,:,:)
 real(kind=8)::pos1(3),pos2(3),diff_vec(3)
 real(kind=8),allocatable::rdf_sum(:,:,:)
 real(kind=8)::dist
-real(kind=8)::box_volumes(nframes)  ! the time-dependent unit cell volume
+real(kind=8)::box_avg  ! the time-averaged unit cell volume
 !
 !    Calculate the RDFs of all elements if desired
 !
@@ -1198,10 +1203,13 @@ neighnum=0.d0
 task_act=0
 !
 !    Determine unit cell volumes for each MD step
+!    Only average useful for RDF normalization!
 !
+box_avg=0.d0
 do i=1,nframes
-   box_volumes(i)=xlens(i)*ylens(i)*zlens(i)
+   box_avg=box_avg+xlens(i)*ylens(i)*zlens(i)
 end do
+box_avg=box_avg/real(nframes)
 
 all_tasks=((nelems**2-nelems)/2+nelems)*(nframes)
 do l=1,nelems
@@ -1275,7 +1283,7 @@ do l=1,nelems
          npart2=el_nums(m)
          r_act=rdf_binsize*(real(j)+0.5d0)
          vb=((real(j) + 1.d0)**3-real(j)**3)*rdf_binsize**3
-         rho=1.d0/(abs(box_volumes(i)))
+         rho=1.d0/abs(box_avg)
          nid=4.d0/3.d0*pi*vb*rho*2.0d0
          rdf_plot(j,l,m)=rdf_plot(j,l,m)/(real(ngr)*real(npart1)*real(npart2)*real(nid))
          rdf_plot(j,m,l)=rdf_plot(j,l,m)

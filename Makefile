@@ -13,8 +13,8 @@ MKL_LINK = -L$(MKLROOT)/lib/intel64 \
 	$(MKLROOT)/lib/intel64/libmkl_core.so -Wl,--end-group -lpthread -lm -ldl
 
 # Choose either MKL or, if not available, Lapack and BLAS
-LFLAGS = $(MKL_LINK)
-#LFLAGS = -llapack -lblas
+#LFLAGS = $(MKL_LINK)
+LFLAGS = -llapack -lblas
 
 # Location of the directory for system-wide installation (default: home/bin)
 BINDIR = $(HOME)/bin

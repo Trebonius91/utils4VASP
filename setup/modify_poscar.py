@@ -52,7 +52,8 @@ Management:
 #    Print general information and all possible keywords of the program    
 #
 print('''
- This script takes a POSCAR file in direct or cartesian coordinates 
+  *** utils4VASP -- utility scripts and programs for VASP ***      
+ modify_poscar.py: takes a POSCAR file in direct or cartesian coordinates 
  and performs several different operations on it, depending 
  on the keyword and its specifiers given in the command line. 
  The list of possible options:

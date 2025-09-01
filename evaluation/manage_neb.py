@@ -55,7 +55,8 @@ Management:
 #    Print general information and all possible keywords of the program    
 #
 print('''
- This manages a  VASP nudged elastic band (NEB) 
+  *** utils4VASP -- utility scripts and programs for VASP ***
+ manage_neb.py: manages a  VASP nudged elastic band (NEB) 
  calculation.
  It is able to generate the needed input from 
  given POSCARs of the first and last frame and 

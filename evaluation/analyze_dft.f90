@@ -53,17 +53,17 @@ end do
 !
 write(*,*)
 write(*,*) " *** utils4VASP -- utility scripts and programs for VASP ***"
-write(*,*) "PROGRAM analyze_dft: Analyzes evaluates and manages VASP"
-write(*,*) " DFT single point calculations."
+write(*,*) "PROGRAM analyze_dft: Analyzes, evaluates and manages VASP"
+write(*,*) " DFT single point property calculations."
 write(*,*) "Currently, four different calculation types can be treated."
 write(*,*) "Select one of them by adding the respective command line "
 write(*,*) " argument to access the respective subroutine with further"
 write(*,*) " details and more detailed commands."
 write(*,*) "The following command line arguments can be given:"
 write(*,*) "  -bader: Evaluates a Bader charge calculation "
-write(*,*) "  -stm: generates STM images from surface calculations."
 write(*,*) "  -pdos: partial density of states calculations are evaluated"
-write(*,*) "  -cls: Setup and evaluate core level shift calculations for"
+write(*,*) "  -stm: generates STM images from surface calculations."
+write(*,*) "  -cls: Set up and evaluate core level shift calculations for"
 write(*,*) "    several atoms in a structure."
 write(*,*) "To give an overview about utils4VASP, add the -overview command."
 

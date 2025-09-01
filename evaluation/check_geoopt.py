@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.6
+#!/usr/bin/env python
 #           
 #    check_geoopt: Check the progress of VASP geometry optimizations
 #      for selective and nonselective dynamics, print out energies,
@@ -75,7 +75,7 @@ Management:
 #    Print general information and all possible keywords of the program    
 #
 print('''
-
+  *** utils4VASP -- utility scripts and programs for VASP ***
 check_geoopt.py: evaluates the process of a VASP geometry optimization,
 by returning the total energy, largest force component, volume, spin
 etc. of each ionic update step and writes them to file check_geoopt.log.

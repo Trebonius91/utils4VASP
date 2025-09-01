@@ -82,6 +82,7 @@ end do
 !    Print general information and all possible keywords of the program    
 !
 write(*,*)
+write(*,*) " *** utils4VASP -- utility scripts and programs for VASP ***"
 write(*,*) "PROGRAM split_freq: performs VASP frequency calculations"
 write(*,*) " for large systems where the calculation cannot be done "
 write(*,*) " within the limited walltime of a calculation cluster"

@@ -52,6 +52,7 @@ end do
 
 !
 write(*,*)
+write(*,*) " *** utils4VASP -- utility scripts and programs for VASP ***"
 write(*,*) "PROGRAM analyze_dft: Analyzes evaluates and manages VASP"
 write(*,*) " DFT single point calculations."
 write(*,*) "Currently, four different calculation types can be treated."

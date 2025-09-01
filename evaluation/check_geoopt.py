@@ -75,7 +75,8 @@ Management:
 #    Print general information and all possible keywords of the program    
 #
 print('''
-This script evaluates the process of a VASP geometry optimization,
+
+check_geoopt.py: evaluates the process of a VASP geometry optimization,
 by returning the total energy, largest force component, volume, spin
 etc. of each ionic update step and writes them to file check_geoopt.log.
 For selective dynamics, only force components of activated degrees of 

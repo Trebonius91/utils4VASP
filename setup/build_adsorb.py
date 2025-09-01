@@ -60,7 +60,8 @@ Management:
 #    Print general information and all possible keywords of the program    
 #
 print('''
- This script manages the complete buildup of VASP
+  *** utils4VASP -- utility scripts and programs for VASP ***
+ build_adsorb.py: Manages the complete buildup of VASP
  input for systems with molecules adsorbed on surfaces.
  The POSCAR file of a  surface slab (POSCAR_surf) needs
  to be provided. A number of large molecules to be adsorbed 

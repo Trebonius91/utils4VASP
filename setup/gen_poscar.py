@@ -3,7 +3,7 @@
 #    gen_poscar: Build VASP POSCAR files for bulk and surface slab
 #      systems with different unit cell geometries.
 #    Part of VASP4CLINT
-#     Julien Steffen, 2023 (julien.steffen@fau.de)
+#     Julien Steffen, 2025 (julien.steffen@fau.de)
 #
 
 import sys
@@ -50,7 +50,8 @@ Management:
 #    Print general information and all possible keywords of the program    
 #
 print('''
-This script manages the buildup of POSCAR files for bulk and surface
+  *** utils4VASP -- utility scripts and programs for VASP ***      
+gen_poscar.py: Manages the buildup of POSCAR files for bulk and surface
 systems with different unit cell geometries.
 An arbitrary number of elements can be added, and the atoms can
 be placed either regularly or by chance. Different crystal lattices
@@ -60,7 +61,7 @@ The script must be called with a number of command line parameters.
  -overview : Print overview of utils4VASP scripts/programs
  -lattice=[option] : Which kind of crystal lattice, available are:
     fcc (face-centered cubic)
-    hcp (hexagonal close pakackage) 
+    hcp (hexagonal close package) 
     sc  (simple cubic).
  -facet=[option] : If a surface slab shall be build: which facet
    shall be used, available are: 
@@ -71,10 +72,10 @@ The script must be called with a number of command line parameters.
  -el_symbols=[list] : List of element symbols for the contained elements
  -el_freq=[list] : Relative frequency of the elements in the list 
    (arbitrary numbers are possible, internally normalized)
+ -lat_const=[value] : Lattice constant of the system (default: 3 Ang.)  
  -unit_x=[number] : Number of atoms along the x axis (or a axis)
  -unit_y=[number] : Number of atoms along the y axis (or b acis)
  -unit_z=[number] : Number of atoms along the z axis (or c axis)
- -natoms=[list] : List of abundancies of elements, one number for each
 The following arguments are optional and have default values 
  -z_vac=[value] : Size of the vacuum along z-axis (default: 15 Ang.)
  -x_vac=[value] : Size of the vacuum along x-axis (default: 0 Ang.)
@@ -82,7 +83,6 @@ The following arguments are optional and have default values
  -z_shift=[value] : Shift of the system along x (default: 0 Ang.)
  -x_shift=[value] : Shift of the system along x (default: 0 Ang.)
  -y_shift=[value] : Shift of the system along x (default: 0 Ang.)
- -unit_len=[value]: Lattice constant of a unit cell (defaut: 3.00 Ang.)
 
 Example: gen_poscar-py gen_poscar.py -lattice=sc -facet=110 -unit_x=3 
       -unit_y=3 -unit_z=6 -el_symbols=Au,Ag,In -el_freq=0.4,0.3,0.3
@@ -145,7 +145,7 @@ for arg in sys.argv:
          y_shift=float(actval)
       if param == "-z_shift":
          z_shift=float(actval)         
-      if param == "-unit_len":
+      if param == "-lat_const":
          unit_len=float(actval) 
          
 

@@ -187,6 +187,7 @@ end do
 !    Print general information and all possible keywords of the program    
 !
 write(*,*) 
+write(*,*) " *** utils4VASP -- utility scripts and programs for VASP ***"
 write(*,*) "PROGRAM mlff_select: selection of an effective set of"
 write(*,*) " local reference configurations (basis sets) for a VASP"
 write(*,*) " machine-learning force field from a given ML-AB file."

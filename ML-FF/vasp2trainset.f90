@@ -84,6 +84,8 @@ end do
 !
 !    Print general information and all possible keywords of the program    
 !
+write(*,*) 
+write(*,*) " *** utils4VASP -- utility scripts and programs for VASP ***"
 write(*,*) "PROGRAM vasp2trainset: Transforms the output of a nudged elastic band (NEB)"
 write(*,*) " or an on-the-fly VASP ML-FF generation trajectory to the training set"
 write(*,*) " format needed for either (a) the aenet program from atomisticnet for"

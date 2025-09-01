@@ -81,6 +81,7 @@ end do
 !    Print general information and all possible keywords of the program    
 !
 write(*,*)
+write(*,*) " *** utils4VASP -- utility scripts and programs for VASP ***"
 write(*,*) "PROGRAM mlp_quality: Evaluation of a MLP with respect to the "
 write(*,*) " reproduction of a given training or verification set."
 write(*,*) "The analysis can be done for Behler neural network potentials "

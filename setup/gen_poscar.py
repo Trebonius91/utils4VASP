@@ -108,7 +108,10 @@ x_shift = 0.0    # Shift of the system along x-direction (Angstrom)
 y_shift = 0.0    # Shift of the system along y-direction (Angstrom)
 z_shift = 0.0    # Shift of the system along z-direction (Angstrom)
 #    Offset of atom positions in the grid: in the center of their "cells"
-offset = unit_len/2.0
+x_offset = unit_len/2.0
+y_offset = unit_len/2.0
+z_offset = unit_len/2.0
+
 
 elnum=0
 unit_num=0
@@ -290,19 +293,30 @@ elif geom_name == "sc":
       b_vec[1]=unit_y*unit_len+y_vacuum
       c_vec[2]=unit_z*unit_len+z_vacuum
 
+#
+#    Lengths of the coordinate vectors
+#
 
 x_len=np.linalg.norm(a_vec)
 y_len=np.linalg.norm(b_vec)
 z_len=np.linalg.norm(c_vec)
 
-offset = offset/z_len
+#
+#    Normalize the shifts and offset of the lattice sizes
+#
+x_offset = x_offset/x_len
+y_offset = y_offset/y_len
+z_offset = z_offset/z_len
+x_shift=x_shift/x_len
+y_shift=y_shift/y_len
+z_shift=z_shift/z_len
 
 print(" - Length of the x-axis (Ang.):              ",str(x_len))
 print(" - Length of the y-axis (Ang.):              ",str(y_len))
 print(" - Length of the z-axis (Ang.):              ",str(z_len))
-print(" - Shift along x-axis (-x_shift):            ",str(x_shift))
-print(" - Shift along y-axis (-y_shift):            ",str(y_shift))
-print(" - Shift along z-axis (-z_shift):            ",str(z_shift))
+print(" - Shift along x-axis (-x_shift):            ",str(x_shift*x_len))
+print(" - Shift along y-axis (-y_shift):            ",str(y_shift*y_len))
+print(" - Shift along z-axis (-z_shift):            ",str(z_shift*z_len))
 
 #
 #    Assign an element species to each atom in the system, which are 
@@ -341,17 +355,17 @@ if geom_name == "fcc":
             z_count=0
             for k in range (unit_z):
                 if z_count == 0:
-                   pos_act[0]=(0.0+i)/unit_x*(x_len-x_vacuum)/x_len
-                   pos_act[1]=(0.0+j)/unit_y*(y_len-y_vacuum)/y_len
-                   pos_act[2]=(0.0+k)/unit_z*(z_len-z_vacuum)/z_len+offset
+                   pos_act[0]=(0.0+i)/unit_x*(x_len-x_vacuum)/x_len+x_offset+x_shift
+                   pos_act[1]=(0.0+j)/unit_y*(y_len-y_vacuum)/y_len+y_offset+y_shift
+                   pos_act[2]=(0.0+k)/unit_z*(z_len-z_vacuum)/z_len+z_offset+z_shift
                 elif z_count == 1:
-                   pos_act[0]=(0.33333333333+i)/unit_x*(x_len-x_vacuum)/x_len
-                   pos_act[1]=(0.33333333333+j)/unit_y*(y_len-y_vacuum)/y_len
-                   pos_act[2]=(0.0+k)/unit_z*(z_len-z_vacuum)/z_len+offset
+                   pos_act[0]=(0.33333333333+i)/unit_x*(x_len-x_vacuum)/x_len+x_offset+x_shift
+                   pos_act[1]=(0.33333333333+j)/unit_y*(y_len-y_vacuum)/y_len+y_offset+y_shift
+                   pos_act[2]=(0.0+k)/unit_z*(z_len-z_vacuum)/z_len+z_offset+z_shift
                 elif z_count == 2:
-                   pos_act[0]=(0.66666666666+i)/unit_x*(x_len-x_vacuum)/x_len
-                   pos_act[1]=(0.66666666666+j)/unit_y*(y_len-y_vacuum)/y_len
-                   pos_act[2]=(0.0+k)/unit_z*(z_len-z_vacuum)/z_len+offset
+                   pos_act[0]=(0.66666666666+i)/unit_x*(x_len-x_vacuum)/x_len+x_offset+x_shift
+                   pos_act[1]=(0.66666666666+j)/unit_y*(y_len-y_vacuum)/y_len+y_offset+y_shift
+                   pos_act[2]=(0.0+k)/unit_z*(z_len-z_vacuum)/z_len+z_offset+z_shift
                 z_count=z_count+1
                 if z_count > 2:
                    z_count=0
@@ -363,13 +377,13 @@ if geom_name == "fcc":
             z_count=0
             for k in range (unit_z):
                 if z_count == 0:
-                   pos_act[0]=(0.0+i)/unit_x*(x_len-x_vacuum)/x_len
-                   pos_act[1]=(0.0+j)/unit_y*(y_len-y_vacuum)/y_len
-                   pos_act[2]=(0.0+k)/unit_z*(z_len-z_vacuum)/z_len+offset
+                   pos_act[0]=(0.0+i)/unit_x*(x_len-x_vacuum)/x_len+x_offset+x_shift
+                   pos_act[1]=(0.0+j)/unit_y*(y_len-y_vacuum)/y_len+y_offset+y_shift
+                   pos_act[2]=(0.0+k)/unit_z*(z_len-z_vacuum)/z_len+z_offset+z_shift
                 elif z_count == 1:
-                   pos_act[0]=(0.5+i)/unit_x*(x_len-x_vacuum)/x_len
-                   pos_act[1]=(0.5+j)/unit_y*(y_len-y_vacuum)/y_len
-                   pos_act[2]=(0.0+k)/unit_z*(z_len-z_vacuum)/z_len+offset
+                   pos_act[0]=(0.5+i)/unit_x*(x_len-x_vacuum)/x_len+x_offset+x_shift
+                   pos_act[1]=(0.5+j)/unit_y*(y_len-y_vacuum)/y_len+y_offset+y_shift
+                   pos_act[2]=(0.0+k)/unit_z*(z_len-z_vacuum)/z_len+z_offset+z_shift
                 z_count=z_count+1
                 if z_count > 1:
                    z_count=0
@@ -381,13 +395,13 @@ if geom_name == "fcc":
             z_count=0
             for k in range (unit_z):
                 if z_count == 0:
-                   pos_act[0]=(0.5+i)/unit_x*(x_len-x_vacuum)/x_len
-                   pos_act[1]=(0.5+j)/unit_y*(y_len-y_vacuum)/y_len
-                   pos_act[2]=(0.0+k)/unit_z*(z_len-z_vacuum)/z_len+offset
+                   pos_act[0]=(0.5+i)/unit_x*(x_len-x_vacuum)/x_len+x_offset+x_shift
+                   pos_act[1]=(0.5+j)/unit_y*(y_len-y_vacuum)/y_len+y_offset+y_shift
+                   pos_act[2]=(0.0+k)/unit_z*(z_len-z_vacuum)/z_len+z_offset+z_shift
                 elif z_count == 1:
-                   pos_act[0]=(0.0+i)/unit_x*(x_len-x_vacuum)/x_len
-                   pos_act[1]=(0.0+j)/unit_y*(y_len-y_vacuum)/y_len
-                   pos_act[2]=(0.0+k)/unit_z*(z_len-z_vacuum)/z_len+offset
+                   pos_act[0]=(0.0+i)/unit_x*(x_len-x_vacuum)/x_len+x_offset+x_shift
+                   pos_act[1]=(0.0+j)/unit_y*(y_len-y_vacuum)/y_len+y_offset+y_shift
+                   pos_act[2]=(0.0+k)/unit_z*(z_len-z_vacuum)/z_len+z_offset+z_shift
                 z_count=z_count+1
                 if z_count > 1:
                    z_count=0
@@ -400,13 +414,13 @@ if geom_name == "hcp":
             z_count=0
             for k in range (unit_z):
                 if z_count == 0:
-                   pos_act[0]=(-0.3333333333+i)/unit_x*(x_len-x_vacuum)/x_len
-                   pos_act[1]=(0.66666666666+j)/unit_y*(y_len-y_vacuum)/y_len
-                   pos_act[2]=(0.0+k)/unit_z*(z_len-z_vacuum)/z_len+offset
+                   pos_act[0]=(-0.3333333333+i)/unit_x*(x_len-x_vacuum)/x_len+x_offset+x_shift
+                   pos_act[1]=(0.66666666666+j)/unit_y*(y_len-y_vacuum)/y_len+y_offset+y_shift
+                   pos_act[2]=(0.0+k)/unit_z*(z_len-z_vacuum)/z_len+z_offset+z_shift
                 elif z_count == 1:
-                   pos_act[0]=(0.0+i)/unit_x*(x_len-x_vacuum)/x_len
-                   pos_act[1]=(0.0+j)/unit_y*(y_len-y_vacuum)/y_len
-                   pos_act[2]=(0.0+k)/unit_z*(z_len-z_vacuum)/z_len+offset
+                   pos_act[0]=(0.0+i)/unit_x*(x_len-x_vacuum)/x_len+x_offset+x_shift
+                   pos_act[1]=(0.0+j)/unit_y*(y_len-y_vacuum)/y_len+y_offset+y_shift
+                   pos_act[2]=(0.0+k)/unit_z*(z_len-z_vacuum)/z_len+z_offset+z_shift
                 z_count=z_count+1
                 if z_count > 1:
                    z_count=0
@@ -418,21 +432,21 @@ if geom_name == "hcp":
             z_count=0
             for k in range (unit_z):
                 if z_count == 0:
-                   pos_act[0]=(0.0+i)/unit_x*(x_len-x_vacuum)/x_len
-                   pos_act[1]=(0.0+j)/unit_y*(y_len-y_vacuum)/y_len
-                   pos_act[2]=(0.1666666+k)/unit_z*(z_len-z_vacuum)/z_len+offset
+                   pos_act[0]=(0.0+i)/unit_x*(x_len-x_vacuum)/x_len+x_offset+x_shift
+                   pos_act[1]=(0.0+j)/unit_y*(y_len-y_vacuum)/y_len+y_offset+y_shift
+                   pos_act[2]=(0.1666666+k)/unit_z*(z_len-z_vacuum)/z_len+z_offset+z_shift
                 elif z_count == 1:
-                   pos_act[0]=(0.0+i)/unit_x*(x_len-x_vacuum)/x_len
-                   pos_act[1]=(0.5+j)/unit_y*(y_len-y_vacuum)/y_len
-                   pos_act[2]=(-0.1666666+k)/unit_z*(z_len-z_vacuum)/z_len+offset
+                   pos_act[0]=(0.0+i)/unit_x*(x_len-x_vacuum)/x_len+x_offset+x_shift
+                   pos_act[1]=(0.5+j)/unit_y*(y_len-y_vacuum)/y_len+y_offset+y_shift
+                   pos_act[2]=(-0.1666666+k)/unit_z*(z_len-z_vacuum)/z_len+z_offset+z_shift
                 elif z_count == 2:
-                   pos_act[0]=(0.5+i)/unit_x*(x_len-x_vacuum)/x_len
-                   pos_act[1]=(0.0+j)/unit_y*(y_len-y_vacuum)/y_len
-                   pos_act[2]=(0.1666666+k)/unit_z*(z_len-z_vacuum)/z_len+offset
+                   pos_act[0]=(0.5+i)/unit_x*(x_len-x_vacuum)/x_len+x_offset+x_shift
+                   pos_act[1]=(0.0+j)/unit_y*(y_len-y_vacuum)/y_len+y_offset+y_shift
+                   pos_act[2]=(0.1666666+k)/unit_z*(z_len-z_vacuum)/z_len+z_offset+z_shift
                 elif z_count == 3:
-                   pos_act[0]=(0.5+i)/unit_x*(x_len-x_vacuum)/x_len
-                   pos_act[1]=(0.5+j)/unit_y*(y_len-y_vacuum)/y_len
-                   pos_act[2]=(-0.1666666+k)/unit_z*(z_len-z_vacuum)/z_len+offset
+                   pos_act[0]=(0.5+i)/unit_x*(x_len-x_vacuum)/x_len+x_offset+x_shift
+                   pos_act[1]=(0.5+j)/unit_y*(y_len-y_vacuum)/y_len+y_offset+y_shift
+                   pos_act[2]=(-0.1666666+k)/unit_z*(z_len-z_vacuum)/z_len+z_offset+z_shift
                 z_count=z_count+1
                 if z_count > 3:
                    z_count=0
@@ -445,9 +459,9 @@ if geom_name == "sc":
             z_count=0
             for k in range (unit_z):
                 if z_count == 0:
-                   pos_act[0]=(0.0+i)/unit_x*(x_len-x_vacuum)/x_len
-                   pos_act[1]=(0.0+j)/unit_y*(y_len-y_vacuum)/y_len
-                   pos_act[2]=(0.0+k)/unit_z*(z_len-z_vacuum)/z_len+offset
+                   pos_act[0]=(0.0+i)/unit_x*(x_len-x_vacuum)/x_len+x_offset+x_shift
+                   pos_act[1]=(0.0+j)/unit_y*(y_len-y_vacuum)/y_len+y_offset+y_shift
+                   pos_act[2]=(0.0+k)/unit_z*(z_len-z_vacuum)/z_len+z_offset+z_shift
                 z_count=z_count+1
                 if z_count > 0:
                    z_count=0
@@ -459,13 +473,13 @@ if geom_name == "sc":
             z_count=0
             for k in range (unit_z):
                 if z_count == 0:
-                   pos_act[0]=(0.0+i)/unit_x*(x_len-x_vacuum)/x_len
-                   pos_act[1]=(0.0+j)/unit_y*(y_len-y_vacuum)/y_len
-                   pos_act[2]=(0.0+k)/unit_z*(z_len-z_vacuum)/z_len+offset
+                   pos_act[0]=(0.0+i)/unit_x*(x_len-x_vacuum)/x_len+x_offset+x_shift
+                   pos_act[1]=(0.0+j)/unit_y*(y_len-y_vacuum)/y_len+y_offset+y_shift
+                   pos_act[2]=(0.0+k)/unit_z*(z_len-z_vacuum)/z_len+z_offset+z_shift
                 elif z_count == 1:
-                   pos_act[0]=(0.5+i)/unit_x*(x_len-x_vacuum)/x_len
-                   pos_act[1]=(0.0+j)/unit_y*(y_len-y_vacuum)/y_len
-                   pos_act[2]=(0.0+k)/unit_z*(z_len-z_vacuum)/z_len+offset
+                   pos_act[0]=(0.5+i)/unit_x*(x_len-x_vacuum)/x_len+x_offset+x_shift
+                   pos_act[1]=(0.0+j)/unit_y*(y_len-y_vacuum)/y_len+y_offset+y_shift
+                   pos_act[2]=(0.0+k)/unit_z*(z_len-z_vacuum)/z_len+z_offset+z_shift
                 z_count=z_count+1
                 if z_count > 1:
                    z_count=0

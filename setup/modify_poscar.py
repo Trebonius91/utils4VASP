@@ -73,6 +73,9 @@ print('''
   -freeze=elems : Set all atoms belonging to a list of elements to F F F,
      for example for frequency calculations, where a surface is kept fix.
      Example: freeze=Pt,O (Pt and O atoms will be kept fix) 
+  -cut_unitcell=[indices] : Cut an almost arbitrary surface unit cell
+     from a POSCAR for a surface slab. Three indices of the atoms that
+     span the cut out unit cell must be given as list.
   -select_el=elems : Select all elements whose atoms shall be modified,
      for example with a shift command. Same syntax as for freeze.
   -select_ind=numbers : Select all atoms by index (start with 1) which
@@ -103,6 +106,7 @@ print('''
 multiply_job=False
 shift_job=False
 phasetrans_job=False
+cut_unitcell=False
 frac2cart=False
 freeze=False
 cart2frac=False
@@ -133,6 +137,9 @@ for arg in sys.argv:
       if param == "-insert_struc":
          insert_list=actval.split(",")
          insert=True
+      if param == "-cut_unitcell":
+         cut_list=actval.split(",")
+         cut_unitcell=True
       if param == "-select_el":
          select_list=actval.split(",")
          select_el=True
@@ -158,7 +165,7 @@ for arg in sys.argv:
 
 if ((not multiply_job) and (not shift_job) and (not frac2cart) and (not cart2frac) 
     and (not writexyz) and (not freeze) and (not bottom) and(not insert)
-    and (not map2unit)):
+    and (not map2unit) and (not cut_unitcell)):
    print("Please give a least one valid keyword!")
    sys.exit(1)
 
@@ -916,6 +923,97 @@ if writexyz:
    sys.stdout=original_stdout
    print(" done!\n")
     
+# F: CUT UNITCELL FROM GIVEN SURFACE SLAB
+if cut_unitcell:
+   print(" Cut arbitrary surface unit cell from given surface slab...")
+#  Transform the POSCAR to cartesian coordinates, if not already present   
+   if cartesian:
+      xyz_new=xyz
+   else:
+      xyz_new=trans_frac2cart(xyz,natoms,a_vec,b_vec,c_vec)
+#  Extract the indices of the span atoms and check if they are valid
+   ind1 = int(cut_list[0])
+   ind2 = int(cut_list[1])
+   ind3 = int(cut_list[2])
+   if (ind1 < 0 or ind1 > natoms):
+      print("Please give a valid number of the first atom!")
+   if (ind2 < 0 or ind2 > natoms):
+      print("Please give a valid number of the second atom!")
+   if (ind3 < 0 or ind3 > natoms):
+      print("Please give a valid number of the third atom!")
+
+   pos1=xyz_new[ind1-1]
+   pos2=xyz_new[ind2-1]
+   pos3=xyz_new[ind3-1]
+#  Calculate the unit cell vectors   
+   vec1=pos2-pos1
+   vec2=pos3-pos1
+   origin=pos1
+   origin[2]=0.0
+
+   print(" Unit cell vector 1: ",vec1)
+   print(" Unit cell vector 2: ",vec2)
+   print(" Origin: ",origin[1],origin[2])
+#  Determine all atoms that are in the defined unit cell
+#  Solve linear system of equations for each atom in the system
+#  Subtract position of atom 1 in the unit cell to shift them to the 
+#  right position
+#  Calculate inverse matrix of coordinate vectors
+   unit_mat=np.zeros((2,2))
+   unit_mat[0][0]=vec1[0]
+   unit_mat[0][1]=vec1[1]
+   unit_mat[1][0]=vec2[0]
+   unit_mat[1][1]=vec2[1]
+
+   inv_mat = np.linalg.inv(unit_mat)
+#  Initialize final list of chosen atoms in cut-out region
+   natoms_chosen=-1
+   xyz_chosen=np.zeros((natoms,3))
+   select_chosen=[]
+   for i in range(nelem):
+      elem_num[i]=0
+
+   for i in range(natoms):
+      x_vec=np.matmul(xyz_new[i,:2]-origin[:2],inv_mat)
+#      print(i,x_vec,xyz_new[i,:2])
+      skip_outer= False
+
+      while x_vec[0] < 1E-8:
+         x_vec[0]=x_vec[0]+1.0
+      while x_vec[1] < 1E-8:
+         x_vec[1]=x_vec[1]+1.0
+
+      if (x_vec[0] > 0.0 and x_vec[0] < 1.0001 and x_vec[1] > 0.0 and x_vec[1] < 1.0001):
+         natoms_chosen=natoms_chosen+1
+         for j in range(natoms_chosen):
+            dist=np.sqrt((xyz_chosen[j][0]-x_vec[0])**2+(xyz_chosen[j][1]-x_vec[1])**2)
+            if (dist < 0.001):
+               natoms_chosen=natoms_chosen-1
+               skip_outer=True
+               break
+         if skip_outer:
+            continue
+         xyz_chosen[natoms_chosen][:2]=x_vec
+         xyz_chosen[natoms_chosen][2]=xyz_new[i][2]/c_vec[2]
+         select_chosen.append(coord_select[i])
+         for j in range(nelem):
+            if names[i] == elements[j]:
+               elem_num[j]=elem_num[j]+1
+               break
+#  Now overwrite output array such that cut unitcell can be
+#  written to POSCAR_mod
+   natoms=natoms_chosen+1
+   print(" Number of atoms in cut out unitcell: ",natoms)
+   coord_select=select_chosen
+#  After selection, there are direct coordinates
+#  Modify also the shape of the unit cell: span vectors
+   a_vec[:2]=vec1[:2]
+   a_vec[2]=0.0
+   b_vec[:2]=vec2[:2]
+   b_vec[2]=0.0
+   #  Transform back to cartesian!
+   xyz_new=trans_frac2cart(xyz_chosen[:natoms],natoms,a_vec,b_vec,c_vec)
+   print(" done!\n")
 
 
 # If the bottom option is activated, turn on the selective switch

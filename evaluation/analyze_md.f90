@@ -162,7 +162,7 @@ write(*,*) "     separately, via the mean square displacement (MSD)."
 write(*,*) " -dt=[time step in fs]: The time step used for MD simulation, in fs."
 write(*,*) " -track_atoms=[list of numbers] : Write time-dependent positions of chosen"
 write(*,*) "     atoms to file. Example: track_atoms=1,78,178"
-write(*,*) " -dens_cube: Write Gaussian cube file with spatially resolved atomic densities."
+write(*,*) " -dens_cube : Write Gaussian cube file with spatially resolved atomic densities."
 write(*,*) " -dft_element=[element]: DFT calculation templates (POSCAR) will be generated for"
 write(*,*) "     the chosen element for representative parts of the trajectory/the system."
 write(*,*) " -tension : calculates the surface tension averaged over all MD frames."
@@ -184,7 +184,7 @@ write(*,*) "     atoms of them as one effective sum particle."
 write(*,*) " -diff_2d : calculates the 2D-diffusion coefficient along x and y, for each element"
 write(*,*) "     in the slab separately, via the mean square displacement (MSD)."
 write(*,*) " -dens_bins=[number] : Number of bins for element densities (default: 501)"
-write(*,*) " -dens_mode=[character] : Decides, along which topology the element densities "
+write(*,*) " -dens_mode=[string] : Decides, along which topology the element densities "
 write(*,*) "     shall be calculated, possible are x, y or z for the coordinate axes or "
 write(*,*) "     sphere:[el1,...], where a sphere around the center of mass of the atoms of the "
 write(*,*) "     chosen element(s) is formed, for example -dens_mode=sphere:Pt,H (default: z)."
@@ -1099,7 +1099,8 @@ end if
 !
 if ((.not. calc_rdf) .and. (.not. write_traj) .and. (.not. dens_elems) &
           & .and. (.not. track_atoms) .and. (.not. calc_diff) &
-          & .and. (cls_element .eq. "XX") .and. (.not. calc_stable)) then
+          & .and. (cls_element .eq. "XX") .and. (.not. calc_stable) &
+          & .and. (.not. dens_cube)) then
    write(*,*)
    write(*,*) "Please choose at least one of the evaluation options!"
    write(*,*)
@@ -1439,6 +1440,7 @@ if (trim(dens_mode) .eq. "x" .or. trim(dens_mode) .eq. "y" .or. &
 
    end do
    close(16)
+   write(*,*) "File 'dens_elems.dat' with 1D element densities is written."
 !
 !    Determine surface concentrations of elements: The parts of the density profile
 !     between the last local minimum and the asymptotics as well as of the penultimate

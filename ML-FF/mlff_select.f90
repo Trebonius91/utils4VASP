@@ -127,7 +127,12 @@ integer,allocatable::hierarchy(:,:)  ! the time-dependent cluster indices
 integer,allocatable::conf_final(:)  ! the final list of configurations
 integer,allocatable::trans_conf(:)  ! translation from old to new configuraiton number
 integer,allocatable::confbas_final(:,:)  ! the final list of confs. for each basis func
+integer,allocatable::bas_list_num(:)  ! the list of basis function numbers in ML_AB (eval)
+integer,allocatable::bas_list_all(:,:,:)  ! the list of basis functions in ML_AB (eval)
+integer,allocatable::bas_list_histo(:,:)  ! the histogram of basis functions
 integer::mat_coord(2)  ! the current matrix indices
+integer::index_act   ! counting for basis set histogram
+logical::eval_mode ! Switch for just evaluate the content of a single ML_AB
 logical::eval_stat(10)  ! the progress for evaluation loops
 logical::no_adf  ! if no angular distribution functions shall be calculated
 logical,allocatable::atom_used(:)  ! boolean mask for blocking of treated atoms
@@ -214,6 +219,8 @@ do i = 1, command_argument_count()
       write(*,*) " -ml_ab=[file1],[file2],... : The file names of the ML_AB files "
       write(*,*) "    that shall be processed by the program. Between 1 and 20 "
       write(*,*) "    can be given in total."
+      write(*,*) " -eval : Evaluate the content of a single ML_AB file to gain"
+      write(*,*) "    information about its learning process."
       write(*,*) " -nbasis=[number] : the [number] is the desired number of local"
       write(*,*) "    reference configurations (basis functions) per element in the"
       write(*,*) "    newly written ML_AB file. If this is chosen, each element"
@@ -316,6 +323,16 @@ if (mlab_num .lt. 1) then
    stop
 end if
 
+!
+!     Read in the content of a single ML_AB file and analyze the learning process, if desired
+!
+eval_mode=.false.
+do i = 1, command_argument_count()
+   call get_command_argument(i, arg)
+   if (trim(arg(1:9))  .eq. "-eval") then
+      eval_mode = .true.
+   end if
+end do
 
 !
 !     Read in command line arguments
@@ -323,23 +340,27 @@ end if
 !     The desired number of reference environments (basis functions)
 !     Option 1: global number for all elements in the ML_AB files
 !
-nbasis=0
-basis_mode=0
-do i = 1, command_argument_count()
-   call get_command_argument(i, arg)
-   if (trim(arg(1:8))  .eq. "-nbasis=") then
-      read(arg(9:),*,iostat=readstat) inc
-      if (readstat .ne. 0) then
-         write(*,*) "The format of the -nbasis=[number] command seems to be corrupted!"
-         write(*,*)
-         write(34,*) "The format of the -nbasis=[number] command seems to be corrupted!"
-         write(34,*)
-         stop
+if (.not. eval_mode) then
+   nbasis=0
+   basis_mode=0
+   do i = 1, command_argument_count()
+      call get_command_argument(i, arg)
+      if (trim(arg(1:8))  .eq. "-nbasis=") then
+         read(arg(9:),*,iostat=readstat) inc
+         if (readstat .ne. 0) then
+            write(*,*) "The format of the -nbasis=[number] command seems to be corrupted!"
+            write(*,*)
+            write(34,*) "The format of the -nbasis=[number] command seems to be corrupted!"
+            write(34,*)
+            stop
+         end if
+         nbasis=inc
+         basis_mode=1
       end if
-      nbasis=inc
-      basis_mode=1
-   end if
-end do
+   end do
+else
+   nbasis=1000
+end if        
 !
 !     The desired number of reference environments (basis functions)
 !     Option 2: one individual number for each element in the ML_AB file
@@ -671,7 +692,15 @@ if (alpha_a .lt. 0.0001d0) then
    write(34,*)
    stop
 end if
-
+!
+!     Abort evaluation mode if more than one ML_AB is defined
+!
+if (eval_mode) then
+   if (mlab_num .gt. 1) then
+      write(*,*) "Please give only one ML_AB file for the evaluation mode!"
+      stop
+   end if
+end if        
 !
 !     Define the Pi
 !
@@ -712,62 +741,69 @@ do i=1,mlab_num
    end if        
 end do
 write(*,*)
-if (basis_mode .eq. 1) then
-   write(*,*) "Number of basis functions for all elements: ",nbasis(1)
-   write(34,*) "Number of basis functions for all elements: ",nbasis(1) 
-else if (basis_mode .eq. 2) then
-   write(*,*) "Number of basis functions for each element, separately:"
-   write(34,*) "Number of basis functions for each element, separately:"
-   do i=1,50
-      if (el_list_bas(i) .eq. "XX") exit
-      write(*,'(a,a,a,i8)') "  * ",el_list_bas(i),":  ",nbasis(i)
-      write(34,'(a,a,a,i8)') "  * ",el_list_bas(i),":  ",nbasis(i)
-   end do
-end if
-write(*,'(a,f10.4,a)') " The ML_FF descriptor cutoff is ",cutoff," Angstrom."
-write(*,'(a,f10.4,a)') " ",grad_frac*100d0," % of basis functions allocated for large gradients."
-write(*,'(a,f10.4,a)') " ",train_div*100d0," % of basis functions allocated uniformly."
-if (no_adf) then
-   write(*,*) "No ADF will be calculated! (-rdf_only activated)"
-   rdf_weight=1.0
-   adf_weight=0.d0
-end if       
-write(*,'(a,f8.3,a,f8.3,a)') " Weighting of overlap matrices: ",rdf_weight*100d0, &
+if (eval_mode) then        
+   write(*,*) "The content of the ML_AB file will be evaluated."
+   write(34,*) "The content of the ML_AB file will be evaluated."
+else   
+   if (basis_mode .eq. 1) then
+      write(*,*) "Number of basis functions for all elements: ",nbasis(1)
+      write(34,*) "Number of basis functions for all elements: ",nbasis(1) 
+   else if (basis_mode .eq. 2) then
+      write(*,*) "Number of basis functions for each element, separately:"
+      write(34,*) "Number of basis functions for each element, separately:"
+      do i=1,50
+         if (el_list_bas(i) .eq. "XX") exit
+         write(*,'(a,a,a,i8)') "  * ",el_list_bas(i),":  ",nbasis(i)
+         write(34,'(a,a,a,i8)') "  * ",el_list_bas(i),":  ",nbasis(i)
+      end do
+   end if
+   write(*,'(a,f10.4,a)') " The ML_FF descriptor cutoff is ",cutoff," Angstrom."
+   write(*,'(a,f10.4,a)') " ",grad_frac*100d0," % of basis functions allocated for large gradients."
+   write(*,'(a,f10.4,a)') " ",train_div*100d0," % of basis functions allocated uniformly."
+   if (no_adf) then
+      write(*,*) "No ADF will be calculated! (-rdf_only activated)"
+      rdf_weight=1.0
+      adf_weight=0.d0
+   end if       
+   write(*,'(a,f8.3,a,f8.3,a)') " Weighting of overlap matrices: ",rdf_weight*100d0, &
                    & " % RDF, ",adf_weight*100d0," % ADF."
-write(*,'(a,i5)') " Number of neighborhood classes per environment & 
+   write(*,'(a,i5)') " Number of neighborhood classes per environment & 
                &size:",neigh_classes 
-write(34,'(a,f10.4,a)') " The ML_FF descriptor cutoff is ",cutoff," Angstrom."
-write(34,'(a,f10.4,a)') " ",grad_frac*100d0," % of basis functions allocated for large gradients."
-write(34,'(a,f10.4,a)') " ",train_div*100d0," % of basis functions allocated uniformly."
-if (no_adf) then
-   write(34,*) "No ADF will be calculated! (-rdf_only activated)"
-end if
-write(34,'(a,f8.3,a,f8.3,a)') " Weighting of overlap matrices: ",rdf_weight*100d0, &
-                   & " % RDF, ",adf_weight*100d0," % ADF."
-write(34,'(a,i5)') " Number of neighborhood classes per environment & 
+   write(34,'(a,f10.4,a)') " The ML_FF descriptor cutoff is ",cutoff," Angstrom."
+   write(34,'(a,f10.4,a)') " ",grad_frac*100d0," % of basis functions allocated for large gradients."
+   write(34,'(a,f10.4,a)') " ",train_div*100d0," % of basis functions allocated uniformly."
+   if (no_adf) then
+      write(34,*) "No ADF will be calculated! (-rdf_only activated)"
+   end if
+   write(34,'(a,f8.3,a,f8.3,a)') " Weighting of overlap matrices: ",rdf_weight*100d0, &
+                      & " % RDF, ",adf_weight*100d0," % ADF."
+   write(34,'(a,i5)') " Number of neighborhood classes per environment & 
                &size:",neigh_classes
 
-if (bas_scale .eq. "linear") then
-   write(*,*) "Number of basis functions per neighborhood class scaled linearly."
-   write(34,*) "Number of basis functions per neighborhood class scaled linearly."
-else if (bas_scale .eq. "root") then     
-   write(*,*) "Number of basis functions per neighborhood class scaled with square root."
-   write(34,*) "Number of basis functions per neighborhood class scaled with square root."
-end if
-write(*,'(a,i6)') " Maximum number of atoms within the cutoff of any atom: ",max_environ
-write(*,'(a,i8)') " Number of grid points for RDF/ADF overlap integrations: ",ngrid
-write(*,'(a,f10.4)') " Exponential prefactor for RDF line broadening: ",alpha_r
-if (.not. no_adf) then
-   write(*,'(a,f10.4)') " Exponential prefactor for ADF line broadening: ",alpha_a
+   if (bas_scale .eq. "linear") then
+      write(*,*) "Number of basis functions per neighborhood class scaled linearly."
+      write(34,*) "Number of basis functions per neighborhood class scaled linearly."
+   else if (bas_scale .eq. "root") then     
+      write(*,*) "Number of basis functions per neighborhood class scaled with square root."
+      write(34,*) "Number of basis functions per neighborhood class scaled with square root."
+   end if
+   write(*,'(a,i6)') " Maximum number of atoms within the cutoff of any atom: ",max_environ
+   write(*,'(a,i8)') " Number of grid points for RDF/ADF overlap integrations: ",ngrid
+   write(*,'(a,f10.4)') " Exponential prefactor for RDF line broadening: ",alpha_r
+   if (.not. no_adf) then
+      write(*,'(a,f10.4)') " Exponential prefactor for ADF line broadening: ",alpha_a
+   end if
+   write(*,*) "--------------------------------------------------"
+   write(*,*)
+   write(34,'(a,i6)') " Maximum number of atoms within the cutoff of any atom: ",max_environ
+   write(34,'(a,i8)') " Number of grid points for RDF/ADF overlap integrations: ",ngrid
+   write(34,'(a,f10.4)') " Exponential prefactor for RDF line broadening: ",alpha_r
+   if (.not. no_adf) then
+      write(34,'(a,f10.4)') " Exponential prefactor for ADF line broadening: ",alpha_a
+   end if
 end if
 write(*,*) "--------------------------------------------------"
 write(*,*)
-write(34,'(a,i6)') " Maximum number of atoms within the cutoff of any atom: ",max_environ
-write(34,'(a,i8)') " Number of grid points for RDF/ADF overlap integrations: ",ngrid
-write(34,'(a,f10.4)') " Exponential prefactor for RDF line broadening: ",alpha_r
-if (.not. no_adf) then
-   write(34,'(a,f10.4)') " Exponential prefactor for ADF line broadening: ",alpha_a
-end if
 write(34,*) "--------------------------------------------------"
 write(34,*)
 flush(34)
@@ -888,6 +924,25 @@ do l=1,mlab_num
          read(56,*,iostat=readstat) at_mass(int(nelems_local(l)/3)*3+1:int(nelems_local(l)/3)*3+1,l)
       end if
    end if
+!
+!    If the evaluation mode is requested: Read in also the lists of basis functions!
+!
+   if (eval_mode) then
+      allocate(bas_list_num(nelems_local(1)))   
+      read(56,*)
+      read(56,*)
+      read(56,*)
+      read(56,*) bas_list_num
+      allocate(bas_list_all(2,maxval(bas_list_num),nelems_local(1)))
+      do i=1,nelems_local(1)
+         read(56,*)
+         read(56,*)
+         read(56,*)
+         do j=1,bas_list_num(i)
+            read(56,*) bas_list_all(:,j,i)
+         end do   
+      end do
+   end if        
    close(56)
 end do
 
@@ -1151,6 +1206,73 @@ end do
 write(*,*) " ... done!"
 write(34,*) " ... done!"
 flush(34)
+
+!
+!     If only evaluation is requested, do it here and stop afterwards
+!
+if (eval_mode) then
+!
+!     Print out the energy of each structure
+!
+   open(unit=112,file="mlab_energies.dat",status="replace")
+   write(112,*) "# This file contains the energies of all structures stored "
+   write(112,*) "#  into the ML_AB file" ,mlab_list(1)
+   write(112,*) "# Evaluated with mlff_select -eval"
+   write(112,*) "# Structure No.     energy(eV)"
+   do i=1,conf_num
+      write(112,*) i,energies(i)
+   end do
+   close(112)
+   write(*,*) "File 'mlab_energies.dat' with total energies written."
+!
+!     Print out the CTIFOR value of each structure
+!
+   open(unit=112,file="mlab_CTIFORs.dat",status="replace")
+   write(112,*) "# This file contains the CTIFOR values of all structures stored "
+   write(112,*) "#  into the ML_AB file" ,mlab_list(1)
+   write(112,*) "# Evaluated with mlff_select -eval"
+   write(112,*) "# Structure No.     energy(eV)"
+   do i=1,conf_num
+      write(112,*) i,ctifors(i)
+   end do
+   close(112)
+   write(*,*) "File 'mlab_CTIFORs.dat' with CTIFOR values written."
+!
+!     Print out the number of collected reference environments during the learning
+!     depending on the structure number 
+!     To make this histogram better visible, the frames will be packed together
+!     to result in a total number of 200 histogram points
+!
+   allocate(bas_list_histo(300,nelems_local(1)))
+   bas_list_histo=0
+   do i=1,nelems_local(1)
+      do j=1,bas_list_num(i)
+         index_act=int((real(bas_list_all(1,j,i))/real(conf_num))*300)
+         bas_list_histo(index_act,i) = bas_list_histo(index_act,i) + 1  
+      end do
+   end do
+   bas_list_histo(300,:)=0
+   open(unit=113,file="mlab_basis_histos.dat",status="replace")
+   write(113,*) "# This file contains the number of local reference "
+   write(113,*) "#  configurations for each element along the on the "
+   write(113,*) "#  fly learning, packed together into bins, spanning"
+   write(113,*) "#  some structures, each."
+   write(113,*) "# Each value contains ca. ",real(conf_num)/real(300), & 
+                    & " training structures"
+   write(113,'(a)',advance="no") " # Structure No. "
+   do i=1,nelems_local(1)
+      write(113,'(a,a)',advance="no") "        ",el_list_glob(i)
+   end do
+   write(113,*)
+   do i=1,300
+      write(113,*) int(real(i)/300.0*conf_num),bas_list_histo(i,:)
+   end do
+   close(113)
+   write(*,*) "File 'mlab_basis_histos.dat' with basis set histograms written."
+   write(*,*) "Evaluation finished!"
+   write(*,*)
+   stop
+end if        
 !
 !     Setup classifier arrays for the atoms
 !     All atoms (no matter to which configuation they belong)

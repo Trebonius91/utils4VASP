@@ -126,10 +126,12 @@ EDIFF = 1E-07
 # The used smearing method for electronic states
 ISMEAR = 0 # Gaussian smearing, for isolators or unknown systems
 # ISMEAR = 1 # Methfessel-Paxton, for metals
+# ISMEAR = -1 # Fermi, for AIMD
 # ISMEAR = -5 # Tetrahedron smearing, for DOS or energy calculations
 
 # The width of the electronic smearin in eV
 SIGMA = 0.04 # standard value for Gaussian smearing
+# SIGMA = [8.61733E-5 * Temp]  # scales with temperature for Fermi smearing
 # SIGMA = 0.15 # standard value for Methfessel-Paxton smearing
 
 # The Grimme empirical dispersion correction scheme with Becke-Johnson damping
@@ -217,9 +219,13 @@ POTIM = 15
       original_stdout=sys.stdout
       with incar as outfile:
          sys.stdout = outfile
-         print("# This is a ab-initio molecular dynamics (AIMD) calculation")
+         print("# This is an ab-initio molecular dynamics (AIMD) calculation")
          header=header.replace('ISYM = 2 ', '# ISYM = 2 ')
          header=header.replace('# ISYM = 0 ', 'ISYM = 0 ')
+         header=header.replace('ISMEAR = 0 ', '# ISMEAR = 0 ')
+         header=header.replace('# ISMEAR = -1 ', 'ISMEAR = -1 ')
+         header=header.replace('SIGMA = 0.04 ', '# SIGMA = 0.04 ')
+         header=header.replace('# SIGMA = [8.61733E-5 ', 'SIGMA = [8.61733E-5 ')
          print(header)
          print('''
 # Set a molecular dynamics calculation

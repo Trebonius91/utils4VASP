@@ -231,9 +231,13 @@ else:
 
 
 print("Given settings:")
-print(" - Lattice type of the unit cell: ",geom_name)
-print(" - Chosen surface facet (z-direction): ",fac_name)
+print(" - Lattice type of the unit cell:            ",geom_name)
+print(" - Chosen surface facet (z-direction):       ",fac_name)
 print(" - Number of elements (-elnum):              ",str(elnum))
+print(" - Total number of atoms:                    ",str(natoms))
+for i in range(elnum):
+   print(" - Element ",i+1,":                              ",str(el_sym_list[i]),"  (",str(el_num_list[i]),"atoms)")
+
 print(" - Number of atoms along x/a axis (-unit_x)  ",str(unit_x))
 print(" - Number of atoms along y/b axis (-unit_y)  ",str(unit_y))
 print(" - Number of atoms along z/c axis (-unit_z)  ",str(unit_z))
@@ -242,10 +246,6 @@ print(" - Vacuum along y-axis (-y_vac):             ",str(y_vacuum))
 print(" - Vacuum along z-axis (-z_vac):             ",str(z_vacuum))
 print(" - Length of a unit cell/Ang. (-unit_len):   ",str(unit_len))
 
-
-print(" - Total number of atoms:                    ",str(natoms))
-for i in range(elnum):
-   print(" - Element ",i+1,":                              ",str(el_sym_list[i]),"  (",str(el_num_list[i]),"atoms)")
 
 
 #
@@ -258,9 +258,9 @@ c_vec=np.zeros((3))
 
 if geom_name == "fcc":
    if fac_name == "111":
-      a_vec[0]=unit_x*unit_len
-      b_vec[0]=(unit_y*unit_len+x_vacuum)/2.0
-      b_vec[1]=(unit_y*unit_len*np.sqrt(3)+y_vacuum)/2.0   
+      a_vec[0]=unit_x*unit_len+x_vacuum
+      b_vec[0]=unit_y*unit_len/2.0+y_vacuum*0.544704779
+      b_vec[1]=unit_y*unit_len*np.sqrt(3)/2.0+y_vacuum*0.8386278
       c_vec[2]=unit_z*np.sqrt(2.0)/np.sqrt(3.0)*unit_len+z_vacuum
    elif fac_name == "100":
       a_vec[0]=unit_x*unit_len+x_vacuum
@@ -273,8 +273,8 @@ if geom_name == "fcc":
 elif geom_name == "hcp":
    if fac_name == "0001":
       a_vec[0]=unit_x*unit_len+x_vacuum
-      b_vec[0]=(unit_y*unit_len+x_vacuum)/2.0
-      b_vec[1]=(unit_y*unit_len*np.sqrt(3)+y_vacuum)/2.0
+      b_vec[0]=(unit_y*unit_len)/2.0+y_vacuum*0.544704779
+      b_vec[1]=(unit_y*unit_len*np.sqrt(3))/2.0+y_vacuum*0.8386278
       c_vec[2]=unit_z*np.sqrt(2.0)/np.sqrt(3.0)*unit_len+z_vacuum
    elif fac_name == "10-10":
       a_vec[0]=unit_x*unit_len+x_vacuum

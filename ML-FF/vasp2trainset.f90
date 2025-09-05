@@ -44,7 +44,10 @@ integer::el_nums(10)
 logical::write_aenet,write_mace
 logical::header
 character(len=2)::el_syms(10)
-
+character(len=150)::cdum
+real(kind=8)::factor,scale_dum
+integer::openstat
+integer::traj_freq
 !
 !    only print the overview of utils4VASP scripts/programs and stop
 !
@@ -99,9 +102,7 @@ write(*,*) "The command line argument decides which kind of calculation will be 
 write(*,*) " -neb : evaluates a NEB calculation."
 write(*,*) " -ml_ff : evaluates a ML-FF learning calculation."
 write(*,*) " -md_traj=[mode] : picks frames from a VASP trajectory (XDATCAR)"
-write(*,*) " For VASP XDATCAR choose if a NVT or NpT ensemble should be processed"
-write(*,*) " -head: Before each frame a header with 8 lines is assumed (NpT)"
-write(*,*) " default: No header is assumed (NVT)"
+write(*,*) " Ensemble (NVT or NpT) of the trajectory is detected automatically."
 write(*,*) "   If mode = setup, a folder with a POSCAR file will be generated for each"
 write(*,*) "   XDATCAR frame, a VASP single point calculation needs to be done in each"
 write(*,*) "   of the folders (IBRION=-1,NSW=0)."
@@ -157,6 +158,17 @@ do i = 1, command_argument_count()
    if (trim(arg(1:9))  .eq. "-md_traj=") then
       eval_md = .true.
       read(arg(10:),*) md_mode
+   end if
+end do
+!
+!     The frequency in which the MD frames will be written 
+!     out to VASP single point calculation input folders
+!
+traj_freq=1
+do i = 1, command_argument_count()
+   call get_command_argument(i, arg)
+   if (trim(arg(1:11))  .eq. "-traj_freq=") then
+      read(arg(12:),*) traj_freq
    end if
 end do
 
@@ -228,33 +240,36 @@ if (eval_md) then
       stop
    end if
 end if
-if (.not. write_aenet .and. .not. write_mace) then
-   write(*,*)
-   write(*,*) "Please choose either the -aenet or -mace output option!"
-   write(*,*)
-   stop
-end if 
+if (trim(md_mode) .ne. "setup") then
+   if (.not. write_aenet .and. .not. write_mace) then
+      write(*,*)
+      write(*,*) "Please choose either the -aenet or -mace output option!"
+      write(*,*)
+      stop
+   end if 
+end if
 if (write_aenet .and. write_mace) then
    write(*,*)
    write(*,*) "Please choose either the -aenet or -mace output option!"
    write(*,*)
    stop
 end if
-if (trim(basename) .eq. "xxxxx") then
-   if (write_aenet) then
-      write(*,*)
-      write(*,*) "Please give a basename for the XSF files with the -name keyword!"
-      write(*,*)
-      stop
+if (trim(md_mode) .ne. "setup") then
+   if (trim(basename) .eq. "xxxxx") then
+      if (write_aenet) then
+         write(*,*)
+         write(*,*) "Please give a basename for the XSF files with the -name keyword!"
+         write(*,*)
+         stop
+      end if
+      if (write_mace) then
+         write(*,*)
+         write(*,*) "Please give a basename for the trainset file with the -name keyword!"
+         write(*,*)
+         stop
+      end if
    end if
-   if (write_mace) then
-      write(*,*)
-      write(*,*) "Please give a basename for the trainset file with the -name keyword!"
-      write(*,*)
-      stop
-   end if
-end if
-         
+end if         
 !
 !     Generate the folder containing the XFS files with the output
 !     information (for aenet)
@@ -658,6 +673,37 @@ if (md_mode .eq. "setup") then
    endif
 
 !
+!    Open the XDATCAR file and read in the frames
+!
+
+   open(unit=14,file="XDATCAR",status="old",iostat=openstat)
+   if (openstat .ne. 0) then
+      stop "ERROR! The file 'XDATCAR' could not been found!"
+   end if
+   read(14,*)
+   read(14,*) factor   ! the global geometry conversion factor
+
+!
+!    Check if the XDATCAR has the format of NpT trajectory with the
+!    full header for each frame, then, skip the headers in each read in
+!
+   open(unit=14,file="XDATCAR",status="old")
+   do i=1,8
+      read(14,'(a)') cdum
+   end do
+   do i=1,natoms
+      read(14,'(a)') cdum
+   end do
+   read(14,*)
+   read(14,*) scale_dum
+   if (abs(scale_dum-factor) .lt. 1E-10) then
+      header=.true.
+   else
+      header=.false.
+   end if
+   close(14)
+
+!
 !    Read in the content of the XDATCAR file
 !
    open(unit=56,file="XDATCAR",status="old",iostat=readstat)
@@ -706,15 +752,16 @@ if (md_mode .eq. "setup") then
 !
 
    write(*,*) " Write folders for VASP single points ..."
-   do i=1,nframes
-      if (i .lt. 10) then
-         write(foldername,'(a,i1)') "frame",i
-      else if (i .lt. 100) then
-         write(foldername,'(a,i2)') "frame",i
-      else if (i .lt. 1000) then
-         write(foldername,'(a,i3)') "frame",i
+   do k=1,nframes/traj_freq
+      i=k*traj_freq
+      if (k .lt. 10) then
+         write(foldername,'(a,i1)') "frame",k
+      else if (k .lt. 100) then
+         write(foldername,'(a,i2)') "frame",k
+      else if (k .lt. 1000) then
+         write(foldername,'(a,i3)') "frame",k
       else
-         write(foldername,'(a,i4)') "frame",i
+         write(foldername,'(a,i4)') "frame",k
       end if
  
       call system("mkdir "//trim(foldername))
@@ -744,14 +791,14 @@ if (md_mode .eq. "setup") then
 !
 
    open(unit=58,file="copy_input.sh",status="replace")
-   if (nframes .lt. 10) then
-      write(58,'(a,i1,a)') "for i in {1..",nframes,"}"
-   else if (nframes .lt. 100) then
-      write(58,'(a,i2,a)') "for i in {1..",nframes,"}"
-   else if (nframes .lt. 1000) then
-      write(58,'(a,i3,a)') "for i in {1..",nframes,"}"
+   if (nframes/traj_freq .lt. 10) then
+      write(58,'(a,i1,a)') "for i in {1..",nframes/traj_freq,"}"
+   else if (nframes/traj_freq .lt. 100) then
+      write(58,'(a,i2,a)') "for i in {1..",nframes/traj_freq,"}"
+   else if (nframes/traj_freq .lt. 1000) then
+      write(58,'(a,i3,a)') "for i in {1..",nframes/traj_freq,"}"
    else
-      write(58,'(a,i4,a)') "for i in {1..",nframes,"}"
+      write(58,'(a,i4,a)') "for i in {1..",nframes/traj_freq,"}"
    end if
    write(58,'(a)') "do"
    write(58,*) "   cp POTCAR frame$i"

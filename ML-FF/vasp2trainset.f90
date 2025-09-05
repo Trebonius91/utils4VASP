@@ -173,19 +173,6 @@ do i = 1, command_argument_count()
 end do
 
 !
-!     For the case that a MD trajectory shall be evaluated
-!     case 1: Before each frame a header is printed
-!     case 2: Before each frame no header is printed
-!
-header = .false.
-do i = 1, command_argument_count()
-    call get_command_argument(i, arg)
-    if (trim(arg) .eq. "-header") then
-        header = .true.
-    end if
-end do
-
-!
 !     Which basename the written XSF files shall have
 !
 basename="xxxxx"
@@ -682,15 +669,21 @@ if (md_mode .eq. "setup") then
    end if
    read(14,*)
    read(14,*) factor   ! the global geometry conversion factor
-
+   close(14)
 !
 !    Check if the XDATCAR has the format of NpT trajectory with the
 !    full header for each frame, then, skip the headers in each read in
 !
    open(unit=14,file="XDATCAR",status="old")
-   do i=1,8
+   do i=1,6
       read(14,'(a)') cdum
    end do
+   el_nums=0
+   read(14,'(a)') cdum
+   read(cdum,*,iostat=readstat) el_nums
+   read(14,*) cdum
+   natoms=sum(el_nums)
+
    do i=1,natoms
       read(14,'(a)') cdum
    end do
@@ -702,6 +695,14 @@ if (md_mode .eq. "setup") then
       header=.false.
    end if
    close(14)
+
+   if (header .eqv. .true.) then
+      write(*,*) " The XDATCAR file comes from a NpT ensemble MD simulation."
+      write(*,*)
+   else
+      write(*,*) " The XDATCAR files comes from a NVT ensemble MD simulation."
+      write(*,*)
+   endif
 
 !
 !    Read in the content of the XDATCAR file

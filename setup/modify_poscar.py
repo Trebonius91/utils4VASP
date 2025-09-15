@@ -965,6 +965,7 @@ if cut_unitcell:
    unit_mat[1][0]=vec2[0]
    unit_mat[1][1]=vec2[1]
 
+
    inv_mat = np.linalg.inv(unit_mat)
 #  Initialize final list of chosen atoms in cut-out region
    natoms_chosen=-1
@@ -972,21 +973,24 @@ if cut_unitcell:
    select_chosen=[]
    for i in range(nelem):
       elem_num[i]=0
-
    for i in range(natoms):
       x_vec=np.matmul(xyz_new[i,:2]-origin[:2],inv_mat)
+      z_act=xyz_new[i][2]/c_vec[2]
 #      print(i,x_vec,xyz_new[i,:2])
       skip_outer= False
-
-      while x_vec[0] < 1E-8:
+      while x_vec[0] < 0.0:
          x_vec[0]=x_vec[0]+1.0
-      while x_vec[1] < 1E-8:
+      while x_vec[1] < 0.0:
          x_vec[1]=x_vec[1]+1.0
+      while x_vec[0] > 1.0:
+         x_vec[0]=x_vec[0]-1.0
+      while x_vec[1] > 1.0:
+         x_vec[1]=x_vec[1]-1.0
 
-      if (x_vec[0] > 0.0 and x_vec[0] < 1.0001 and x_vec[1] > 0.0 and x_vec[1] < 1.0001):
+      if (x_vec[0] > 0.0 and x_vec[0] < 1.0000 and x_vec[1] > 0.0 and x_vec[1] < 1.00000):
          natoms_chosen=natoms_chosen+1
          for j in range(natoms_chosen):
-            dist=np.sqrt((xyz_chosen[j][0]-x_vec[0])**2+(xyz_chosen[j][1]-x_vec[1])**2)
+            dist=np.sqrt((xyz_chosen[j][0]-x_vec[0])**2+(xyz_chosen[j][1]-x_vec[1])**2+(xyz_chosen[j][2]-z_act)**2)
             if (dist < 0.001):
                natoms_chosen=natoms_chosen-1
                skip_outer=True

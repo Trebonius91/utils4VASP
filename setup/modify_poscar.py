@@ -990,8 +990,28 @@ if cut_unitcell:
       if (x_vec[0] > 0.0 and x_vec[0] < 1.0000 and x_vec[1] > 0.0 and x_vec[1] < 1.00000):
          natoms_chosen=natoms_chosen+1
          for j in range(natoms_chosen):
-            dist=np.sqrt((xyz_chosen[j][0]-x_vec[0])**2+(xyz_chosen[j][1]-x_vec[1])**2+(xyz_chosen[j][2]-z_act)**2)
-            if (dist < 0.001):
+            dist_vec=np.zeros(3)
+            dist_vec2=np.zeros(3)
+
+            dist_vec[0]=xyz_chosen[j][0]-x_vec[0]
+            dist_vec[1]=xyz_chosen[j][1]-x_vec[1]
+            dist_vec[2]=xyz_chosen[j][2]-z_act
+
+            for k in range(3):
+               if dist_vec[k] > 0.5:
+                  dist_vec[k]=dist_vec[k]-1.0
+               if dist_vec[k] < -0.5:
+                  dist_vec[k]=dist_vec[k]+1.0
+
+            dist_vec2[0]=(dist_vec[0]*a_vec[0]+dist_vec[1]*b_vec[0]+\
+                           dist_vec[2]*c_vec[0])*sys_scale
+            dist_vec2[1]=(dist_vec[0]*a_vec[1]+dist_vec[1]*b_vec[1]+\
+                           dist_vec[2]*c_vec[1])*sys_scale
+            dist_vec2[2]=(dist_vec[0]*a_vec[2]+dist_vec[1]*b_vec[2]+\
+                           dist_vec[2]*c_vec[2])*sys_scale
+
+            dist=np.sqrt((dist_vec2[0])**2+(dist_vec2[1])**2+(dist_vec2[2])**2)
+            if (dist < 1.0):
                natoms_chosen=natoms_chosen-1
                skip_outer=True
                break

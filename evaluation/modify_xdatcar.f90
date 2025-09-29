@@ -25,6 +25,11 @@ integer::multiply_vec(3),pick_ind,pos_new,multiply_prod
 integer::frame_first,frame_last,line_num
 integer::read_freq
 logical::npt,print_npt
+logical::remove_mode
+character(len=40)::remove_com
+character(len=1)::remove_dim,remove_sign
+real(kind=8)::remove_border
+logical,allocatable::keep_atoms(:,:)
 logical::eval_stat(10)
 logical::shift_cell,multiply_cell,pick_frame,print_xyz,print_last
 character(len=120)::a120,cdum,arg,adum
@@ -84,6 +89,9 @@ write(*,*) "    given in direct coordinates. Example: -shift=0.1,0.0,0.2"
 write(*,*) " -multiply=a,b,c : Multiply the unit cell of each frame by some"
 write(*,*) "    replications in each of the coordinate directions. Integers"
 write(*,*) "    must be given as arguments. Example: -multiply=2,2,1"
+write(*,*) " -remove=[value] : Remove all atoms in all frames that fulfill"
+write(*,*) "    the criteria. Example: -remove=x>8 (all atoms removed that"
+write(*,*) "    have an x value of 8 or larger. "
 write(*,*) " -read_freq=[number]: Only read in and process every nth frame"
 write(*,*) "    Example: -read_freq=10 : every 10th frame will be read in and "
 write(*,*) "    processed and written out. (DEFAULT: 1)"  
@@ -136,6 +144,28 @@ do i = 1, command_argument_count()
       end if
    end if
 end do
+!
+!     Remove all atoms in a certain coordinate range
+!
+remove_mode=.false.
+do i = 1, command_argument_count()
+   call get_command_argument(i, arg)
+   if (trim(arg(1:10))  .eq. "-remove=") then
+      read(arg(9:),*,iostat=readstat) remove_com
+      remove_mode=.true.
+      if (readstat .ne. 0) then
+         write(*,*)
+         stop "Check the command -remove=..., something went wrong!"
+         write(*,*)
+      end if
+   end if
+end do
+if (remove_mode) then
+   read(remove_com(:1),*) remove_dim
+   read(remove_com(1:2),*) remove_sign
+   read(remove_com(3:),*) remove_border
+end if        
+
 !
 !     Read in the read in frequency (every n'th frame will be 
 !          read in and processed)

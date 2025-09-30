@@ -31,6 +31,7 @@ character(len=1)::remove_dim
 character(len=2)::remove_sign
 real(kind=8)::remove_border
 logical,allocatable::keep_atoms(:,:)
+logical::smooth_mode
 logical::eval_stat(10)
 logical::shift_cell,multiply_cell,pick_frame,print_xyz,print_last
 character(len=120)::a120,cdum,arg,adum
@@ -104,6 +105,8 @@ write(*,*) " -frame_last=[number] : The number of the last frame to be printed "
 write(*,*) "   (default: last frame of the trajectory)"
 write(*,*) " -frame_first=[number] : The number of the first frame to be printed "
 write(*,*) "   (default: frame No. 1)"
+write(*,*) " -smooth : Add this to remove all sudden jumps of atoms between "
+write(*,*) "   frames due to image flags (e.g. for VDOS calculations)."
 write(*,*) " -print_npt : Print a NVT trajectory in the NPT format, e.g., for "
 write(*,*) "    subsequent analysis with TRAVIS."
 write(*,*) "One or several of these commands can be executed. The ordering"
@@ -227,6 +230,18 @@ do i = 1, command_argument_count()
       print_npt=.true.
    end if
 end do
+
+!
+!     Remove sudden jumps of atoms between frames: smooth mode
+!
+smooth_mode=.false.
+do i = 1, command_argument_count()
+   call get_command_argument(i, arg)
+   if (trim(arg(1:7))  .eq. "-smooth") then
+      smooth_mode=.true.
+   end if
+end do
+
 !
 !    Activate printout in NPT format if the total number of atoms 
 !      changes for each frame after atom deletions
@@ -745,6 +760,25 @@ if (print_xyz) then
       write(34,*) counter
       write(34,*) "Trajectory converted from XDATCAR file via modify_xdatcar"
       do j=1,natoms
+!
+!     If the smooth mode is activated, remove all sudden jumps between frames
+!      due to changed image flags
+!
+         if (smooth_mode) then
+            if (i .gt. frame_first) then
+               do k=1,3
+                  if (xyz2(k,j,i) .gt. xyz2(k,j,i-1)+0.5) then
+                     xyz2(k,j,i) = xyz2(k,j,i)-1.0
+                  end if
+                  if (xyz2(k,j,i) .lt. xyz2(k,j,i-1)-0.5) then
+                     xyz2(k,j,i) = xyz2(k,j,i)+1.0
+                  end if
+               end do
+            end if
+         end if
+!
+!     If removal mode is activated: only print the remaining atoms
+!
          if (keep_atoms(j,i)) then
             if (npt) then
                xyz_print(1)=(xyz2(1,j,i)*a_vecs(1,i)+xyz2(2,j,i)*b_vecs(1,i)+ &
@@ -846,6 +880,23 @@ else
  
          write(34,*) "Direct configuration=  ",i
          do j=1,natoms
+!
+!     If the smooth mode is activated, remove all sudden jumps between frames
+!      due to changed image flags
+!
+            if (smooth_mode) then
+               if (i .gt. frame_first) then
+                  do k=1,3
+                     if (xyz2(k,j,i) .gt. xyz2(k,j,i-1)+0.5) then
+                        xyz2(k,j,i) = xyz2(k,j,i)-1.0
+                     end if
+                     if (xyz2(k,j,i) .lt. xyz2(k,j,i-1)-0.5) then
+                        xyz2(k,j,i) = xyz2(k,j,i)+1.0
+                     end if
+                  end do
+               end if
+            end if
+
             if (keep_atoms(j,i)) then
                write(34,'(3f15.8)') xyz2(:,j,i) 
             end if

@@ -16,7 +16,7 @@ real(kind=8)::a_vec(3),b_vec(3),c_vec(3)
 real(kind=8),allocatable::a_vecs(:,:),b_vecs(:,:),c_vecs(:,:)
 character(len=2),allocatable::el_names_read(:),el_names(:)
 character(len=2),allocatable::at_names(:),at_names2(:)
-integer,allocatable::el_nums(:)
+integer,allocatable::el_nums(:),el_nums_tmp(:)
 real(kind=8)::act_num(3),factor
 real(kind=8),allocatable::xyz(:,:,:),xyz2(:,:,:)
 real(kind=8)::xlen,ylen,zlen
@@ -27,7 +27,8 @@ integer::read_freq
 logical::npt,print_npt
 logical::remove_mode
 character(len=40)::remove_com
-character(len=1)::remove_dim,remove_sign
+character(len=1)::remove_dim
+character(len=2)::remove_sign
 real(kind=8)::remove_border
 logical,allocatable::keep_atoms(:,:)
 logical::eval_stat(10)
@@ -90,8 +91,9 @@ write(*,*) " -multiply=a,b,c : Multiply the unit cell of each frame by some"
 write(*,*) "    replications in each of the coordinate directions. Integers"
 write(*,*) "    must be given as arguments. Example: -multiply=2,2,1"
 write(*,*) " -remove=[value] : Remove all atoms in all frames that fulfill"
-write(*,*) "    the criteria. Example: -remove=x>8 (all atoms removed that"
-write(*,*) "    have an x value of 8 or larger. "
+write(*,*) "    the criteria. Example: -remove=xgt8 (all atoms removed that"
+write(*,*) "    have an x value of 8 or larger. The trajectory will then be"
+write(*,*) "    written in NpT format. Attention with variable atom number!"
 write(*,*) " -read_freq=[number]: Only read in and process every nth frame"
 write(*,*) "    Example: -read_freq=10 : every 10th frame will be read in and "
 write(*,*) "    processed and written out. (DEFAULT: 1)"  
@@ -150,7 +152,7 @@ end do
 remove_mode=.false.
 do i = 1, command_argument_count()
    call get_command_argument(i, arg)
-   if (trim(arg(1:10))  .eq. "-remove=") then
+   if (trim(arg(1:8))  .eq. "-remove=") then
       read(arg(9:),*,iostat=readstat) remove_com
       remove_mode=.true.
       if (readstat .ne. 0) then
@@ -162,8 +164,8 @@ do i = 1, command_argument_count()
 end do
 if (remove_mode) then
    read(remove_com(:1),*) remove_dim
-   read(remove_com(1:2),*) remove_sign
-   read(remove_com(3:),*) remove_border
+   read(remove_com(2:3),*) remove_sign
+   read(remove_com(4:),*) remove_border
 end if        
 
 !
@@ -225,7 +227,13 @@ do i = 1, command_argument_count()
       print_npt=.true.
    end if
 end do
-
+!
+!    Activate printout in NPT format if the total number of atoms 
+!      changes for each frame after atom deletions
+!
+if (remove_mode) then
+   print_npt=.true.
+end if
 !
 !     Only print frames until frame No frame_last
 !
@@ -264,7 +272,7 @@ end do
 
 if ((.not. shift_cell) .and. (.not. multiply_cell) .and. (.not. pick_frame) .and. &
            &  (.not. print_xyz) .and. (.not. print_last) .and. (read_freq .eq. 1) .and. &
-           &  (.not. print_npt)) then
+           &  (.not. print_npt) .and. (.not. remove_mode)) then
    write(*,*)
    write(*,*) "Please give at least one of the possible commands!"
    write(*,*)
@@ -309,6 +317,7 @@ do i=1,10
    nelems=nelems+1
 end do
 allocate(el_names(nelems),el_nums(nelems))
+allocate(el_nums_tmp(nelems))
 
 do i=1,nelems
    el_names(i)=el_names_read(i)
@@ -378,7 +387,7 @@ if (npt) then
    allocate(b_vecs(3,nframes))
    allocate(c_vecs(3,nframes))
 end if
-
+allocate(keep_atoms(natoms,nframes))
 !
 !    Read in the coordinates of the frames and correct for image flags
 !
@@ -652,7 +661,61 @@ if (pick_frame) then
       write(*,*) "completed!"
       write(*,*)
    end if
-end if 
+end if
+
+!
+!    E: Remove atoms from all frames of the trajectory that are within a defined range
+!
+keep_atoms=.true.
+if (remove_mode) then
+   if (.not. npt) then
+      npt=.true.
+      allocate(a_vecs(3,nframes))
+      allocate(b_vecs(3,nframes))
+      allocate(c_vecs(3,nframes))
+      do i=1,nframes
+         a_vecs(:,i)=a_vec
+         b_vecs(:,i)=b_vec
+         c_vecs(:,i)=c_vec
+      end do
+   end if
+
+   do i=1,nframes
+      do j=1,natoms
+         if (remove_dim .eq. "x") then
+            if (remove_sign .eq. "gt") then
+               if (xyz2(1,j,i)*a_vecs(1,i) .gt. remove_border) then
+                  keep_atoms(j,i) = .false.     
+               end if   
+            else if (remove_sign .eq. "lt") then
+               if (xyz2(1,j,i)*a_vecs(1,i) .lt. remove_border) then
+                  keep_atoms(j,i) = .false.
+               end if   
+            end if
+         else if (remove_dim .eq. "y") then
+            if (remove_sign .eq. "gt") then
+               if (xyz2(2,j,i)*b_vecs(2,i) .gt. remove_border) then
+                  keep_atoms(j,i) = .false.
+               end if
+            else if (remove_sign .eq. "lt") then
+               if (xyz2(2,j,i)*b_vecs(2,i) .lt. remove_border) then
+                  keep_atoms(j,i) = .false.
+               end if
+            end if
+         else if (remove_dim .eq. "z") then
+            if (remove_sign .eq. "gt") then
+               if (xyz2(3,j,i)*c_vecs(3,i) .gt. remove_border) then
+                  keep_atoms(j,i) = .false.
+               end if
+            else if (remove_sign .eq. "lt") then
+               if (xyz2(3,j,i)*c_vecs(3,i) .lt. remove_border) then
+                  keep_atoms(j,i) = .false.
+               end if
+            end if
+         end if   
+      end do
+   end do
+end if
 !
 !    D: Write structure to XYZ trajectory file
 !      During this, convert coordinates to cartesian!
@@ -673,25 +736,33 @@ if (print_xyz) then
             end if
          end if
       end do
-      write(34,*) natoms
+      counter=0
+      do j=1,natoms
+         if (keep_atoms(j,i)) then
+            counter=counter+1
+         end if
+      end do
+      write(34,*) counter
       write(34,*) "Trajectory converted from XDATCAR file via modify_xdatcar"
       do j=1,natoms
-         if (npt) then
-            xyz_print(1)=(xyz2(1,j,i)*a_vecs(1,i)+xyz2(2,j,i)*b_vecs(1,i)+ &
-                         & xyz2(3,j,i)*c_vecs(1,i))*factor
-            xyz_print(2)=(xyz2(1,j,i)*a_vecs(2,i)+xyz2(2,j,i)*b_vecs(2,i)+ &
-                         & xyz2(3,j,i)*c_vecs(2,i))*factor
-            xyz_print(3)=(xyz2(1,j,i)*a_vecs(3,i)+xyz2(2,j,i)*b_vecs(3,i)+ & 
-                         & xyz2(3,j,i)*c_vecs(3,i))*factor
-         else 
-            xyz_print(1)=(xyz2(1,j,i)*a_vec(1)+xyz2(2,j,i)*b_vec(1)+ &
-                         & xyz2(3,j,i)*c_vec(1))*factor
-            xyz_print(2)=(xyz2(1,j,i)*a_vec(2)+xyz2(2,j,i)*b_vec(2)+ &
-                         & xyz2(3,j,i)*c_vec(2))*factor
-            xyz_print(3)=(xyz2(1,j,i)*a_vec(3)+xyz2(2,j,i)*b_vec(3)+ &
-                         & xyz2(3,j,i)*c_vec(3))*factor
+         if (keep_atoms(j,i)) then
+            if (npt) then
+               xyz_print(1)=(xyz2(1,j,i)*a_vecs(1,i)+xyz2(2,j,i)*b_vecs(1,i)+ &
+                            & xyz2(3,j,i)*c_vecs(1,i))*factor
+               xyz_print(2)=(xyz2(1,j,i)*a_vecs(2,i)+xyz2(2,j,i)*b_vecs(2,i)+ &
+                            & xyz2(3,j,i)*c_vecs(2,i))*factor
+               xyz_print(3)=(xyz2(1,j,i)*a_vecs(3,i)+xyz2(2,j,i)*b_vecs(3,i)+ & 
+                            & xyz2(3,j,i)*c_vecs(3,i))*factor
+            else 
+               xyz_print(1)=(xyz2(1,j,i)*a_vec(1)+xyz2(2,j,i)*b_vec(1)+ &
+                            & xyz2(3,j,i)*c_vec(1))*factor
+               xyz_print(2)=(xyz2(1,j,i)*a_vec(2)+xyz2(2,j,i)*b_vec(2)+ &
+                            & xyz2(3,j,i)*c_vec(2))*factor
+               xyz_print(3)=(xyz2(1,j,i)*a_vec(3)+xyz2(2,j,i)*b_vec(3)+ &
+                            & xyz2(3,j,i)*c_vec(3))*factor
+            end if
+            write(34,*) at_names2(j),xyz_print(:)
          end if
-         write(34,*) at_names2(j),xyz_print(:)
       end do
    end do
    close(34)
@@ -726,17 +797,35 @@ else
             end if
          end do
          if (npt) then
+!
+!    For removed atoms: decrease the number of total atoms per element each frame
+!
+            el_nums_tmp=0
+            counter = 1
+            do j=1,nelems
+               do k=1,el_nums(j)
+                  if (keep_atoms(counter,j)) then
+                     el_nums_tmp(j) = el_nums_tmp(j)+1
+                  end if
+                  counter = counter +1                  
+               end do
+            end do
+
             write(34,*) "NpT Trajectory written by modify_xdatcar"
             write(34,*) factor
             write(34,'(3f15.6)') a_vecs(:,i)
             write(34,'(3f15.6)') b_vecs(:,i)
             write(34,'(3f15.6)') c_vecs(:,i)
             do j=1,nelems
-               write(34,'(a,a)',advance="no") el_names(j),"  "
+               if (el_nums_tmp(j) .gt. 0) then
+                  write(34,'(a,a)',advance="no") el_names(j),"  "
+               end if
             end do
             write(34,*)
             do j=1,nelems
-               write(34,'(i6,a)',advance="no") el_nums(j)," "
+               if (el_nums_tmp(j) .gt. 0) then
+                  write(34,'(i6,a)',advance="no") el_nums_tmp(j)," "
+               end if
             end do
             write(34,*)
          else if (i .eq. frame_first) then
@@ -757,7 +846,9 @@ else
  
          write(34,*) "Direct configuration=  ",i
          do j=1,natoms
-            write(34,'(3f15.8)') xyz2(:,j,i) 
+            if (keep_atoms(j,i)) then
+               write(34,'(3f15.8)') xyz2(:,j,i) 
+            end if
          end do
       end do
       close(34)

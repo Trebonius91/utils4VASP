@@ -28,6 +28,7 @@ logical::read_dt    ! control if the MD time step has been read in
 logical::calc_stable  ! determines the stability of a system
 logical::skip_xdat ! skip the read in of XDATCAR for surface tension
 logical::dens_cube ! if spacially-resolved average element densities are given
+logical::distribute ! if 1D and 2D distributions of coordinates shall be given
 
 real(kind=8)::pi  ! the pi
 integer::analyze_parts ! number of parts of the trajectory to be evaluated
@@ -51,6 +52,13 @@ integer,allocatable::el_nums(:)  ! numbers of the elements
 logical::eval_stat(10)  ! for print out of status for long processes
 integer::all_tasks  ! for print out of status
 integer::cls_elem_ind  ! The number of the element whose structures are picked
+integer::dist_dim  ! number of dimensions for coordinate distributions
+integer,allocatable::dist_kind(:)  ! type of coordinates for distributions
+integer,allocatable::dist_ats(:,:)  ! atom indices of coordinates for distributions
+integer,allocatable::dist_grid(:) ! number of grid points for distributions
+real(kind=8),allocatable::dist_lo(:) ! lower coordinate borders for distributions
+real(kind=8),allocatable::dist_hi(:) ! upper coordinate borders for distributions
+character(len=70),allocatable::dist_strings(:) ! description of coordinates 
 real(kind=8)::xlen,ylen,zlen,zmax  ! sizes of the unit cell
 character(len=20)::dens_mode ! which kind of element density profile 
 real(kind=8)::dens_depth  ! depth of the slab surface region (concentrations)
@@ -70,7 +78,7 @@ implicit none
 integer::i,j,k
 integer::xdat_lines
 real(kind=8)::rdum1,rdum2
-integer::frame_shift
+integer::frame_shift,pos
 integer::nframes  ! total number of frames
 real(kind=8),allocatable::xyz(:,:,:) ! all coordinates of the trajectory
 real(kind=8),allocatable::xyz_part(:,:,:)  ! coordinates of the current traj. part
@@ -165,6 +173,10 @@ write(*,*) "     atoms to file. Example: track_atoms=1,78,178"
 write(*,*) " -dens_cube : Write Gaussian cube file with spatially resolved atomic densities."
 write(*,*) " -dft_element=[element]: DFT calculation templates (POSCAR) will be generated for"
 write(*,*) "     the chosen element for representative parts of the trajectory/the system."
+write(*,*) " -distribute=[list]: Gives 1D or 2D distributions of certain coordinate values."
+write(*,*) "     Possible are distanaces and angles, or combinations of them. Angles can be"
+write(*,*) "     defined between three atoms or between two atoms and a coordinate axis."
+write(*,*) "     Example: distribute=50,51and10,11,z (distance vs. angle to z coordinate)."
 write(*,*) " -tension : calculates the surface tension averaged over all MD frames."
 write(*,*) "     For this, the OUTCAR file needs to be present (MD with ISIF=2)"
 write(*,*) " -stability : Determines if all bonds in the system are stable, and, if not,"
@@ -190,6 +202,10 @@ write(*,*) "     sphere:[el1,...], where a sphere around the center of mass of t
 write(*,*) "     chosen element(s) is formed, for example -dens_mode=sphere:Pt,H (default: z)."
 write(*,*) " -dens_depth=[value] : How many Angstroms below the slab surface the surface "
 write(*,*) "     concentration of elements shall be determined (default: 5.0)"
+write(*,*) " -distr_bins=[list]: Number of bins for coordinate distributions (with -distribute),"
+write(*,*) "     one number for each coordinate."
+write(*,*) " -distr_range=[list]: Upper and lower coordinate boders for -distribute), two values"
+write(*,*) "     given for each coordinate. Example: distr_range=4to5,90to180"
 write(*,*) " -dft_slices=[number]: How many different slices along the z-coordinate where "
 write(*,*) "     the atom for which DFT POSCAR templates are written (near or far from the "
 write(*,*) "     surface of the slab) (default: 100)."
@@ -200,10 +216,6 @@ write(*,*) "     DFT template generation in each part (default: 1)."
 !
 pi=3.141592653589793238
 
-!
-!    Read in the command line arguments and define the evaluation settings
-!
-call read_arguments()
 !
 !    First, determine the number of lines in the XDATCAR file
 !
@@ -266,6 +278,13 @@ close(14)
 !     Number of atoms in the slab
 !
 natoms = sum(el_nums)
+
+!
+!    Read in the command line arguments and define the evaluation settings
+!
+call read_arguments()
+!
+
 !
 !    Check if the XDATCAR has the format of NpT trajectory with the 
 !    full header for each frame, then, skip the headers in each read in
@@ -492,6 +511,38 @@ if (dens_elems) then
    write(*,*) " * Depth below the surface slab (if existent) for which element"
    write(*,*) "    concentrations will be evaluated:",dens_depth
 end if
+if (distribute) then
+   write(*,*) "The averaged distribution of coordinate values will be printed."
+   if (dist_dim .eq. 1) then
+      write(*,*) " * One coordinate will be evaluated (one-dimensional)"
+   else if (dist_dim .eq. 2) then
+      write(*,*) " * Two coordinates will be evaluated (two-dimensional)"      
+   end if        
+   do i=1,dist_dim
+      if (dist_kind(i) .eq. 1) then
+         write(dist_strings(i),'(i5,a,i5,a)') dist_ats(1,i),"-",dist_ats(2,i)," (bond)"     
+         write(*,'(a,i1,a,a)') "  * Coordinate No ",i,": ",trim(dist_strings(i))   
+         write(*,'(a,i6,a,f10.4,a,f10.4,a)') "   - Evaluated on ",dist_grid(i), &
+                     & " bins between",dist_lo(i)," and",dist_hi(i)," Ang."
+      else if (dist_kind(i) .eq. 2) then
+         write(dist_strings(i),'(i5,a,i5,a)') dist_ats(1,i),"-",dist_ats(2,i),"-"     
+         pos=len_trim(dist_strings(i))+1
+         if (dist_ats(3,i) .eq. -1) then
+             write(dist_strings(i)(pos:),*) "(x-axis) (angle)  "
+         else if (dist_ats(3,i) .eq. -2) then
+             write(dist_strings(i)(pos:),*) "(y-axis) (angle)  "
+         else if (dist_ats(3,i) .eq. -3) then
+             write(dist_strings(i)(pos:),*) "(z-axis) (angle)  "
+         else
+             write(dist_strings(i)(pos:),'(i5,a)') dist_ats(3,i)," (angle)"
+         end if
+         write(*,'(a,i1,a,a)') "  * Coordinate No ",i,": ",dist_strings(i)
+         write(*,'(a,i6,a,f10.4,a,f10.4,a)') "   - Evaluated on ",dist_grid(i), &
+                    & " bins between",dist_lo(i)," and",dist_hi(i)," °"     
+      end if
+
+   end do
+end if        
 if (calc_diff) then
    write(*,*) "The element self-diffusion coefficients will be calculated."
    write(*,'(a,f12.6)') "  * The assumed MD time step (fs):",time_step
@@ -658,6 +709,12 @@ do i=1,analyze_parts
       call spacial_density(frames_part(i),xyz_part,xlens_p,ylens_p,zlens_p)
    end if
 !
+!    Calculate 1D and 2D distributions of coordinate values
+!
+   if (distribute) then
+      call coord_distribute(frames_part(i),xyz_part,xlens_p,ylens_p,zlens_p)
+   end if        
+!
 !    Determine if the system remained stable during the MD and if not, which
 !    bond broke first at what time
 !
@@ -756,8 +813,11 @@ end program analyze_md
 subroutine read_arguments ()
 use analyze_md_mod
 implicit none 
-integer::i,readstat
-character(len=150)::arg
+integer::i,j,readstat
+character(len=150)::arg,input_str
+character(len=20)::parts(10)
+character(len=4)::list_read(3)
+integer::start,pos,ncount,input_len
 !
 !    The number of separate parts in which a trajectory shall
 !    be evaluated
@@ -854,6 +914,127 @@ do i=1,50
    end if
    track_num=track_num+1
 end do
+
+!
+!    Calculate the distribution of coordinate values over the MD trajectory
+!    This can be done for 1D or 2D distributions, bond lengths and angles 
+!    are supported.
+!
+distribute=.false.
+do i = 1, command_argument_count()
+   call get_command_argument(i, arg)
+   if (trim(arg(1:12))  .eq. "-distribute=") then
+      read(arg(13:),'(a)',iostat=readstat)  input_str
+      distribute=.true.
+   end if
+end do
+if (distribute) then
+   input_len=len_trim(input_str)
+   start=1
+   ncount=0
+   do
+      pos = index(input_str(start:), "and") 
+      if (pos .eq. 0) then
+         ncount = ncount + 1 
+         parts(ncount)=adjustl(trim(input_str(start:input_len)))
+         exit
+      else
+         ncount = ncount +1    
+         parts(ncount) = adjustl(trim(input_str(start:start+pos-2)))
+         start = start + pos + 2
+      end if   
+   end do
+!
+!    Now define the coordinates that shall be evaluated, also take possible 
+!    coordinate axes for angles into account
+!
+   dist_dim=ncount
+   allocate(dist_kind(dist_dim))
+   allocate(dist_strings(dist_dim))
+   allocate(dist_ats(3,dist_dim))
+   dist_ats=0
+   do i=1,dist_dim
+      list_read="xxxx"
+      read(parts(i),*,iostat=readstat) list_read(:)
+      do j=1,3
+         if (trim(list_read(j)) .eq. "xxxx") exit
+         if (trim(list_read(j)) .eq. "x") then
+            dist_ats(j,i)=-1
+         else if (trim(list_read(j)) .eq. "y") then
+            dist_ats(j,i)=-2
+         else if (trim(list_read(j)) .eq. "z") then
+            dist_ats(j,i)=-3
+         else     
+            read(list_read(j),*,iostat=readstat) dist_ats(j,i)
+            if (readstat .ne. 0) then
+               write(*,'(a,i1,a)') " The format for Coordinate No.",i,&
+                         & " for -distribute is broken!"
+            end if        
+         end if
+         if ((dist_ats(j,i) .eq. 0) .or. (dist_ats(j,i) .gt. natoms)) then
+            write(*,'(a,i1,a)') " Coordinate No. ",i," for -distribute states atoms &
+                         & that are not in the system!"
+            stop
+         end if        
+      end do 
+      if (dist_ats(1,i) .eq. 0 .or. dist_ats(2,i) .eq. 0) then
+         write(*,'(a,i1,a)') " Coordinate No.",i," for distribute lacks atoms!"
+         stop
+      else if (dist_ats(3,i) .eq. 0) then
+         dist_kind(i)=1
+      else
+         dist_kind(i)=2
+      end if         
+   end do
+!
+!    Determine borders and grid points if given by the user
+!    Fist give default values
+!
+   allocate(dist_grid(dist_dim))
+   allocate(dist_hi(dist_dim))
+   allocate(dist_lo(dist_dim))
+   dist_grid=200
+   do i=1,dist_dim
+      if (dist_kind(i) .eq. 1) then
+         dist_lo(i) = 0.0d0
+         dist_hi(i) = 8.0d0
+      else if (dist_kind(i) .eq. 2) then
+         dist_lo(i) = 0.0d0
+         dist_hi(i) = 180.0d0
+      end if        
+   end do
+!
+!    Change the numbers of bins for the coordinates
+!
+   do i = 1, command_argument_count()
+      call get_command_argument(i, arg)
+      if (trim(arg(1:12))  .eq. "-distr_bins=") then
+         read(arg(13:),*,iostat=readstat)  dist_grid
+      end if
+   end do
+!
+!    Change lower and upper borders for the coordinates
+!
+   do i = 1, command_argument_count()
+      call get_command_argument(i, arg)
+      if (trim(arg(1:13))  .eq. "-distr_range=") then
+         read(arg(14:),*,iostat=readstat)  parts
+         do j=1,dist_dim
+!
+!     Replace all to with ,
+!
+            pos = index(parts(j), "to")  
+            if (pos > 0) then
+               parts(j) = parts(j)(:pos-1) // "," // parts(j)(pos+2:)
+            else
+               parts(i) = parts(j)
+            end if
+            read(parts(j),*) dist_lo(j),dist_hi(j)
+         end do
+      end if
+   end do
+
+end if
 !
 !    Look if Radial Distribution functions shall be calculated
 !
@@ -1100,7 +1281,7 @@ end if
 if ((.not. calc_rdf) .and. (.not. write_traj) .and. (.not. dens_elems) &
           & .and. (.not. track_atoms) .and. (.not. calc_diff) &
           & .and. (cls_element .eq. "XX") .and. (.not. calc_stable) &
-          & .and. (.not. dens_cube)) then
+          & .and. (.not. dens_cube) .and. (.not. distribute)) then
    write(*,*)
    write(*,*) "Please choose at least one of the evaluation options!"
    write(*,*)
@@ -2466,6 +2647,146 @@ do i=1,nelems
 end do
 
 end subroutine spacial_density
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!    SUBROUTINE COORD_DISTRIBUTE
+!    Determine one- and two-dimensional distributtion functions
+!    of coordinates (bond lengths and angles) of a system
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+subroutine coord_distribute(nframes,xyz,xlens,ylens,zlens)
+use analyze_md_mod
+implicit none
+integer::i,j,k,l,m,ig1,ig2
+integer::nframes  ! current local number of frames
+real(kind=8)::xyz(3,natoms,nframes)  ! local part of the trajectory
+real(kind=8)::xlens(nframes),ylens(nframes),zlens(nframes)  ! the NpT unit cells
+real(kind=8)::coord_val
+real(kind=8),allocatable::dist_act(:,:)
+real(kind=8)::binsize1,binsize2
+real(kind=8)::bin_shift1,bin_shift2
+real(kind=8)::coord3_1(3),coord3_2(3)
+real(kind=8)::norm_fac  ! normalization constant
+
+write(*,*) "Starting coordinate distribution analysis ..."
+
+binsize1=(dist_hi(1)-dist_lo(1))/dist_grid(1)
+bin_shift1=int(dist_lo(1)/binsize1)
+if (dist_dim .eq. 1) then
+   allocate(dist_act(1,dist_grid(1)))     
+else if (dist_dim .eq. 2) then
+   allocate(dist_act(dist_grid(1),dist_grid(2)))
+   binsize2=(dist_hi(2)-dist_lo(2))/dist_grid(2)
+   bin_shift2=int(dist_lo(2)/binsize2)
+end if
+dist_act=0.d0
+
+do i=1,nframes
+   if (dist_kind(1) .eq. 1) then
+      call coord_bond(xyz(:,dist_ats(1,1),i),xyz(:,dist_ats(2,1),i),coord_val)
+   else if (dist_kind(1) .eq. 2) then
+      if (dist_ats(3,1) .lt. 1) then
+         coord3_1=0.d0
+      else
+         coord3_1=xyz(:,dist_ats(3,1),i)
+      end if        
+      call coord_angle(xyz(:,dist_ats(1,1),i),xyz(:,dist_ats(2,1),i), &
+                & coord3_1,dist_ats(3,1),coord_val)
+   end if        
+   ig1 = int(coord_val/binsize1)-bin_shift1
+   if (dist_dim .eq. 2) then
+      if (dist_kind(2) .eq. 1) then
+         call coord_bond(xyz(:,dist_ats(1,2),i),xyz(:,dist_ats(2,2),i),coord_val)
+      else if (dist_kind(2) .eq. 2) then
+         if (dist_ats(3,2) .lt. 1) then
+            coord3_2=0.d0
+         else
+            coord3_2=xyz(:,dist_ats(3,2),i)
+         end if   
+         call coord_angle(xyz(:,dist_ats(1,2),i),xyz(:,dist_ats(2,2),i), &
+                   & coord3_2,dist_ats(3,2),coord_val)
+      end if   
+      ig2 = int(coord_val/binsize2)-bin_shift2
+   end if
+   if (dist_dim .eq. 1) then
+      if ((ig1 .le. dist_grid(1)) .and. (ig1 .ge. 1)) then
+         dist_act(1,ig1) = dist_act(1,ig1) + 1.d0
+      end if
+   else if (dist_dim .eq. 2) then
+      if ((ig1 .le. dist_grid(1)) .and. (ig1 .ge. 1) .and. & 
+                & (ig2 .le. dist_grid(2)) .and. (ig2 .ge. 1) ) then
+         dist_act(ig1,ig2) = dist_act(ig1,ig2) + 1.d0
+      end if
+   end if
+
+end do
+
+norm_fac=maxval(dist_act)
+open(unit=67,file="coord_distribute.dat",status="replace")
+if (dist_dim .eq. 1) then
+   write(67,*) "# coord analysis: ",trim(dist_strings(1))
+   do i=1,dist_grid(1)
+      write(67,*) dist_lo(1)+i*binsize1,dist_act(1,i)/norm_fac
+   end do
+else if (dist_dim .eq. 2) then
+   write(67,*) "# coord analysis: ",trim(dist_strings(1))," vs ", &
+                   & trim(dist_strings(2))
+   do i=1,dist_grid(1)
+      do j=1,dist_grid(2)
+         write(67,*) dist_lo(1)+i*binsize1,dist_lo(2)+ &
+                       & j*binsize2,dist_act(i,j)/norm_fac
+      end do
+      write(67,*)
+   end do   
+end if        
+close(67)
+
+write(*,*) " ... done!"
+write(*,*) "File coord_distribute.dat with plot data written."
+
+end subroutine coord_distribute
+
+
+subroutine coord_bond(pos1,pos2,dist)
+use analyze_md_mod
+implicit none 
+real(kind=8)::pos1(3),pos2(3),dist
+real(kind=8)::bond_vec(3)
+
+bond_vec(:)=pos2(:)-pos1(:)
+dist=sqrt(dot_product(bond_vec,bond_vec))
+
+return 
+end subroutine coord_bond        
+
+
+
+subroutine coord_angle(pos1,pos2,pos3,ind3,angle)
+use analyze_md_mod
+implicit none 
+real(kind=8)::pos1(3),pos2(3),pos3(3)
+integer::ind3
+real(kind=8)::angle
+real(kind=8)::bond_vec1(3),bond_vec2(3)
+
+bond_vec1(:)=pos2(:)-pos1(:)
+if (ind3 .eq. -1) then
+   bond_vec2(:)= (/1.0d0,0.0d0,0.0d0/)
+else if (ind3 .eq. -2) then
+   bond_vec2(:)= (/0.0d0,1.0d0,0.0d0/)     
+else if (ind3 .eq. -3) then
+   bond_vec2(:)= (/0.0d0,0.0d0,1.0d0/)   
+else
+   bond_vec2(:)=pos2(:)-pos3(:)
+end if   
+
+angle=acos((bond_vec1(1)*bond_vec2(1)+bond_vec1(2)*bond_vec2(2)+ &
+          & bond_vec1(3)*bond_vec2(3))/(sqrt(dot_product(bond_vec1,&
+          & bond_vec1))*sqrt(dot_product(bond_vec2,bond_vec2))))
+angle=angle*180d0/pi
+
+return
+end subroutine coord_angle
 
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

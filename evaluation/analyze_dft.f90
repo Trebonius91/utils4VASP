@@ -14,6 +14,7 @@ implicit none
 integer::i
 character(len=120)::cdum,arg
 logical::switch_bader,switch_stm,switch_pdos,switch_cls
+logical::switch_ddec6
 !
 !    only print the overview of utils4VASP scripts/programs and stop
 !
@@ -61,6 +62,7 @@ write(*,*) " argument to access the respective subroutine with further"
 write(*,*) " details and more detailed commands."
 write(*,*) "The following command line arguments can be given:"
 write(*,*) "  -bader: Evaluates a Bader charge calculation "
+write(*,*) "  -ddec6: Evaluates a DDEC6 charge calculation "
 write(*,*) "  -pdos: partial density of states calculations are evaluated"
 write(*,*) "  -stm: generates STM images from surface calculations."
 write(*,*) "  -cls: Set up and evaluate core level shift calculations for"
@@ -76,6 +78,17 @@ do i = 1, command_argument_count()
    call get_command_argument(i, arg)
    if (trim(arg(1:6))  .eq. "-bader") then
       switch_bader = .true.
+   end if
+end do
+
+!
+!    If a DDEC6 charge calculation shall be evaluated
+!
+switch_ddec6 = .false.
+do i = 1, command_argument_count()
+   call get_command_argument(i, arg)
+   if (trim(arg(1:6))  .eq. "-ddec6") then
+      switch_ddec6 = .true.
    end if
 end do
 
@@ -113,7 +126,8 @@ do i = 1, command_argument_count()
 end do
 
 if ((.not. switch_bader) .and. (.not. switch_stm) .and. &
-    & (.not. switch_pdos) .and. (.not. switch_cls)) then
+    & (.not. switch_pdos) .and. (.not. switch_cls) .and. &
+    & (.not. switch_ddec6)) then
    write(*,*)
    write(*,*) "Please give one of the calculation types!"
    write(*,*)
@@ -125,6 +139,10 @@ end if
 !
 if (switch_bader) then
    call calc_bader
+end if
+
+if (switch_ddec6) then
+   call calc_ddec6
 end if
 
 if (switch_stm) then
@@ -540,7 +558,7 @@ close(70)
 !    Print out individual Bader partial charges to separate file
 !
 open(unit=19,file="bader_charges.dat")
-write(19,*) "# Bader charges of all atoms, written by eval_bader"
+write(19,*) "# Bader charges of all atoms, written by analyze_dft"
 write(19,*) "# index      charge(e)"
 do i=1,natoms
    write(19,'(i9,f15.8)') i, charge_list(i)
@@ -595,6 +613,171 @@ end do
 
 end subroutine calc_bader
 
+
+!
+!    calc_bader: evaluates the result of a DDEC6 charge calculation
+!      with the chargemol program based on the CHGCAR and AECCAR 
+!      VASP output files.
+!      The file DDEC6_even_tempered_atomic_charges.xyz needs to be present
+!
+
+subroutine calc_ddec6
+implicit none
+integer::i,j,k
+integer::readstat
+integer::natoms,nelems
+real(kind=8),allocatable::xyz(:,:)
+real(kind=8),allocatable::charge_list(:)
+character(len=2),allocatable::at_names(:),el_names(:)
+integer,allocatable::el_nums(:)
+character(len=2)::el_names_tmp(50)
+real(kind=8)::a_vec(3),b_vec(3),c_vec(3)
+real(kind=8),allocatable::charge_avg(:)
+character(len=20)::adum
+logical::el_exist
+!
+!    Print general information and all possible keywords of the program
+!
+write(*,*)
+write(*,*) "Option -ddec6: evaluation of DDEC6 charge calculations"
+write(*,*) " from preprocessed VASP output for arbitrary systems."
+write(*,*) "Before starting the analysis, the files AECCAR0, AECCAR2 and "
+write(*,*) " CHGCAR must be present as output and evaullated with the "
+write(*,*) " Chargemol program from T. Manz et al.:"
+write(*,*) " https://sourceforge.net/projects/ddec/files/"
+write(*,*) "Read the tutorial there or in the utils4VASP wiki on how "
+write(*,*) " run that evaluation." 
+write(*,*) "After this, the fie DDEC6_even_tempered_net_atomic_charges.xyz"
+write(*,*) " should be present."
+write(*,*) "Now, start this program. "
+write(*,*)
+!
+!    Read in relevant informations from Chargemol output file
+!
+open(unit=45,file="DDEC6_even_tempered_net_atomic_charges.xyz", &
+           & status="old",iostat=readstat)
+if (readstat .ne. 0) then
+   write(*,*) "The file DDEC6_even_tempered_net_atomic_charges.xyz is missing!"
+   write(*,*)
+   stop
+end if
+read(45,*) natoms
+allocate(xyz(3,natoms))
+allocate(charge_list(natoms))
+allocate(at_names(natoms))
+
+read(45,*) adum,adum,adum,adum,adum,adum,adum,adum,adum,adum,&
+      & a_vec(:),adum,adum,b_vec(:),adum,adum,c_vec(:)
+do i=1,natoms
+   read(45,*) at_names(i),xyz(:,i),charge_list(i)
+end do
+close(45)
+!
+!    Determine number of elements in the system
+!
+nelems=0
+do i=1,natoms
+   el_exist=.false.
+   do j=1,nelems
+      if (trim(at_names(i)) .eq. trim(el_names_tmp(j))) then
+         el_exist=.true.
+      end if
+   end do
+   if (.not. el_exist) then
+      nelems=nelems+1
+      el_names_tmp(nelems)=at_names(i)
+   end if
+end do
+allocate(el_names(nelems))
+allocate(el_nums(nelems))
+allocate(charge_avg(nelems))
+el_names(:)=el_names_tmp(1:nelems)
+el_nums=0
+
+!
+!    Determine number of atoms for each element
+!
+do i=1,natoms
+   do j=1,nelems
+      if (trim(at_names(i)) .eq. trim(el_names(j))) then
+         el_nums(j) = el_nums(j) + 1
+      end if
+   end do
+end do
+!
+!    Calculate the average charges
+!
+charge_avg=0.d0
+do i=1,natoms
+   do j=1,nelems
+      if (trim(at_names(i)) .eq. trim(el_names(j))) then
+         charge_avg(j)=charge_avg(j)+charge_list(i)
+      end if
+   end do 
+end do
+do j=1,nelems
+   charge_avg(j)=charge_avg(j)/el_nums(j)
+end do
+
+!
+!    Print out individual DDEC6 partial charges to separate file
+!
+open(unit=19,file="ddec6_charges.dat")
+write(19,*) "# DDEC6 charges of all atoms, written by analyze_dft"
+write(19,*) "# index      charge(e)"
+do i=1,natoms
+   write(19,'(i9,f15.8)') i, charge_list(i)
+end do
+
+close(19)
+write(*,*) "DDEC6 charges of atoms written to 'ddec6_charges.dat'."
+
+!
+!    Print out structure and charges together to file charges.pdb
+!    (can be used for VMD visualization)
+!
+open(unit=20,file="charges.pdb")
+write(20,'(a)') "COMPND    FINAL HEAT OF FORMATION =     0.000000"
+write(20,'(a)') "AUTHOR    GENERATED BY PROGRAM EVAL BADER"
+do i=1,natoms
+   write(20,'(a,i5,a,a,a,3f8.3,f7.3,f5.2,a,a)') "HETATM",i," ",at_names(i), &
+                 & "   UNL     1    ",xyz(:,i),charge_list(i),0d0,"          ",at_names(i)
+end do
+write(20,*) "MASTER        0    0    0    0    0    0    0    0  180    0  180    0"
+write(20,*) "END"
+close(20)
+write(*,*) "File with coordinates and charges written to 'charges.pdb'"
+write(*,*) " Open this file with VMD and select 'coloring method: occupancy'"
+
+open(unit=21,file="POSCAR_charge")
+write(21,*) "POSCAR file with charges, written by analyze_dft"
+write(21,*) 1.0
+write(21,*) a_vec(:)
+write(21,*) b_vec(:)
+write(21,*) c_vec(:)
+do i=1,nelems
+   write(21,'(a,a)',advance="no") " ",el_names(i)
+end do
+write(21,*)
+write(21,*) el_nums(:)
+write(21,*) "Cartesian"
+do i=1,natoms
+   write(21,'(4f23.15)') xyz(:,i),charge_list(i)
+end do
+close(21)
+write(*,*) "File with coordinates and charges written to 'POSCAR_charge'"
+write(*,*)
+!
+!    Print out resulting average charges
+!
+
+write(*,*) "The resulting average charges are:"
+do i=1,nelems
+   write(*,'(3a,f12.6)') "   -",el_names(i),":  ",charge_avg(i)
+end do
+
+
+end subroutine calc_ddec6
 
 !
 !    calc_stm: evaluates the results of a STM calculation

@@ -65,7 +65,8 @@ print('''
   -solvation : A single point calculation with implicit solvation
   -dos : A density of states calculation, resolved to atoms and orbitals
   -band : An electronic band structure calculation for a given path
-  -bader : A Bader partial charge calculation
+  -charge : A Bader or DDEC6 partial charge calculation
+  -wannier : Construction of localized Wannier orbitals
   -cls_is : A core level shift (CLS) calculation (initial state)
   -cls_fs : A core level shift (CLS) calculation (final state)
   -stm : Calculation of the needed data for a simulated STM image
@@ -361,12 +362,12 @@ NEDOS = 1001
          print('''
          ''')
       sys.stdout=original_stdout
-   elif arg == "-bader":
-      print(" An INCAR for a Bader charge calculation is written.")
+   elif arg == "-charge":
+      print(" An INCAR for a Bader/DDEC6 charge calculation is written.")
       original_stdout=sys.stdout
       with incar as outfile:
          sys.stdout = outfile
-         print("# This is a Bader charge calculation")
+         print("# This is a Bader/DDEC6 charge calculation")
          header=header.replace('# Write no charge density to file to save memory',
                      '# Write the charge density to file')
          header=header.replace('LCHARG = .FALSE.','LCHARG = .TRUE.')
@@ -374,6 +375,49 @@ NEDOS = 1001
          print('''
 # Write the all-electron charge density to file
 LAECHG = .TRUE.
+         ''')
+      sys.stdout=original_stdout
+   elif arg == "-wannier":
+      print(" An INCAR for construction of Wannier orbitals is written..")
+      original_stdout=sys.stdout
+      with incar as outfile:
+         sys.stdout = outfile
+         print("# This is a Wannierization (Wannier orbital constructun) run")
+         print(header)
+         print('''
+# Number of bands that shall be projected to Wannier centers
+NBANDS = [number]
+
+# If the LOCPROJ method shall be used, enter ion numbers and orbitals (s,p,pz...)
+# LOCPROJ = [ion]:[orb];[ion]:[orb];...
+
+# If the Wannier transformation matrix shall be written to disk
+# LWRITE_WANPROJ = .TRUE.
+
+
+# If the SCDM method shall be used (automatic finding of centers)
+# LSCDM = .TRUE.
+
+# Number of Wannier orbitals to be constructed
+# NUM_WANN = [number]
+
+# Chose the cutoff function for disentanglement (if desired)
+# CUTOFF_TYPE = erfc
+
+# Position of the cutoff function, in eV relative to Fermi level
+# CUTOFF_MU = [value]
+
+# Width of the cutoff function, in eV
+# CUTOFF_SIGMA = [value]
+
+# Activates interface for automatic call to Wannier90
+# LWANNIER90 = .TRUE.
+
+# Give additional settings for Wannier90 (others set by VASP)
+# WANNIER90_WIN = "
+#    dis_num_iter = 100
+#    num_iter = 100
+#  "  
          ''')
       sys.stdout=original_stdout
    elif arg == "-cls_is":

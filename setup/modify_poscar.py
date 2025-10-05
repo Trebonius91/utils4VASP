@@ -172,6 +172,13 @@ if ((not multiply_job) and (not shift_job) and (not frac2cart) and (not cart2fra
 # Read in the POSCAR file
 poscar_name="POSCAR"
 
+# Check if the POSCAR file exists
+if os.path.isfile(poscar_name):
+   print("\n The POSCAR file could be located.\n")
+else:
+   print("\n No POSCAR file could be found! \n")
+   sys.exit(1)
+
 poscar_in = open(poscar_name,"r")
 
 # array for selective dynamics specifiers
@@ -622,6 +629,12 @@ if insert:
    
 # Read in the POSCAR_insert file
    poscar_name="POSCAR_insert"
+
+   if os.path.isfile(poscar_name):
+      print("\n The POSCAR_insert file could be located.\n")
+   else:
+      print("\n No POSCAR_insert file could be found! \n")
+      sys.exit(1)
 
    poscar_insert = open(poscar_name,"r")
 

@@ -23,7 +23,7 @@ real(kind=8)::xlen,ylen,zlen
 real(kind=8)::shift_vec(3),act_val,xyz_print(3)
 integer::multiply_vec(3),pick_ind,pos_new,multiply_prod
 integer::frame_first,frame_last,line_num
-integer::read_freq
+integer::read_freq,status
 logical::npt,print_npt
 logical::remove_mode
 character(len=40)::remove_com
@@ -37,7 +37,8 @@ logical::shift_cell,multiply_cell,pick_frame,print_xyz,print_last
 character(len=120)::a120,cdum,arg,adum
 character(len=220)::a220
 character(len=50)::atest
-
+integer::alloc_stat
+character(len=100)::alloc_err
 !
 !    only print the overview of utils4VASP scripts/programs and stop
 !
@@ -301,7 +302,11 @@ end if
 !
 write(*,*)
 write(*,*) "Determine number of atoms and frames in XDATCAR..."
-call system("wc -l XDATCAR > xdat_length")
+status = system("wc -l XDATCAR > xdat_length")
+if (status .ne. 0) then
+   write(*,*) "The number of atoms/frames could not be determined! XDATCAR missing?"
+   stop
+end if
 open(unit=45,file="xdat_length",status="old")
 read(45,*) xdat_lines
 close(45)
@@ -396,7 +401,12 @@ end if
 !
 !    Allocate global coordinate arrays
 !
-allocate(xyz(3,natoms,nframes))
+allocate(xyz(3,natoms,nframes),stat=alloc_stat,errmsg=alloc_err)
+if (alloc_stat .ne. 0) then
+   write(*,*) "Allocation of xyz array failed:",trim(alloc_err)
+   write(*,*) "Please read in a smaller trajectory or increase memory!"
+   stop
+end if
 if (npt) then
    allocate(a_vecs(3,nframes))
    allocate(b_vecs(3,nframes))

@@ -224,6 +224,10 @@ if build_job:
       sys.exit(1)
 
 #   Open POSCAR file of first frame
+   if not os.path.isfile(poscar1):
+      print("\n No "+poscar1+" file could be found! \n")
+      sys.exit(1)
+
    poscar_in = open(poscar1,"r")
 
    cartesian=False
@@ -302,6 +306,10 @@ if build_job:
             xyz1[i][j]=float(xyz_read[j]) 
 
 #   Open POSCAR file of last frame
+   if not os.path.isfile(poscar2):
+      print("\n No "+poscar2+" file could be found! \n")
+      sys.exit(1)
+
    poscar_in = open(poscar2,"r")
 
    cartesian=False

@@ -1,5 +1,5 @@
 !
-!    mlp_quality: Evaluate the quality of a MLP with respect to the 
+!    mlip_quality: Evaluate the quality of a MLP with respect to the 
 !      reproduction of a given training or verification set.
 !      Currently, Behler neural networks, message-passing atomic cluster
 !      expansion (MACE) and VASP ML-FF production runs can be evaluated.
@@ -82,7 +82,7 @@ end do
 !
 write(*,*)
 write(*,*) " *** utils4VASP -- utility scripts and programs for VASP ***"
-write(*,*) "PROGRAM mlp_quality: Evaluation of a MLP with respect to the "
+write(*,*) "PROGRAM mlip_quality: Evaluation of a MLP with respect to the "
 write(*,*) " reproduction of a given training or verification set."
 write(*,*) "The analysis can be done for Behler neural network potentials "
 write(*,*) " optimized with the aenet program (ANN) or for message-passing "

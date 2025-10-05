@@ -95,7 +95,8 @@ real(kind=8),allocatable::xlens(:),ylens(:),zlens(:) ! NpT unit cell sizes
 real(kind=8),allocatable::xlens_p(:),ylens_p(:),zlens_p(:) ! ... for call of subroutines
 character(len=2)::el_eval_list(20)  ! the elements to be set to COM (density mode)
 integer::el_eval_num  ! number of elements for the COM (density mode)
-integer::readstat,openstat
+integer::readstat,openstat,status,alloc_stat
+character(len=100)::alloc_err
 integer::counter,endl 
 real(kind=8)::scale_dum
 logical::npt_format
@@ -226,7 +227,12 @@ if (readstat .ne. 0) then
    write(*,*)
    stop
 end if   
-call system("wc -l XDATCAR > xdat_length")
+status = system("wc -l XDATCAR > xdat_length")
+if (status .ne. 0) then
+   write(*,*) "The number of atoms/frames could not be determined! XDATCAR missing?"
+   stop
+end if
+
 open(unit=45,file="xdat_length",status="old")
 read(45,*) xdat_lines
 close(45)
@@ -349,7 +355,13 @@ if (npt_format) then
    open(unit=14,file="XDATCAR",status="old")
 end if        
 
-allocate(xyz(3,natoms,nframes))
+allocate(xyz(3,natoms,nframes),stat=alloc_stat,errmsg=alloc_err)
+if (alloc_stat .ne. 0) then
+   write(*,*) "Allocation of xyz array failed:",trim(alloc_err)
+   write(*,*) "Please read in a smaller trajectory or increase memory!"
+   stop
+end if
+
 !
 !    Read in the coordinates of the frames and correct for image flags
 !

@@ -593,12 +593,24 @@ class IL_Molecule:
 #
       if self.type == "large": 
          if self.spec == "local1":
+            if not os.path.isfile("POSCAR_ads1"):
+               print("\n No POSCAR_ads1 file could be found! \n")
+               sys.exit(1)
             mol_in = open("POSCAR_ads1","r")
          elif self.spec == "local2":
+            if not os.path.isfile("POSCAR_ads2"):
+               print("\n No POSCAR_ads2 file could be found! \n")
+               sys.exit(1)
             mol_in = open("POSCAR_ads2","r")
          elif self.spec == "local3":
+            if not os.path.isfile("POSCAR_ads3"):
+               print("\n No POSCAR_ads3 file could be found! \n")
+               sys.exit(1)
             mol_in = open("POSCAR_ads3","r")
          elif self.spec == "local4":
+            if not os.path.isfile("POSCAR_ads3"):
+               print("\n No POSCAR_ads3 file could be found! \n")
+               sys.exit(1)
             mol_in = open("POSCAR_ads4","r")
          else:   
             mol_in = io.StringIO(adsorbate_dict[self.spec])
@@ -800,6 +812,12 @@ class IL_Molecule:
 # First, read in the POSCAR file for the metal surface
 surface_name="POSCAR_surf"
 
+if os.path.isfile(surface_name):
+   print("\n The POSCAR_surf file could be located.\n")
+else:
+   print("\n No POSCAR_surf file could be found! \n")
+   sys.exit(1)
+
 surface_in = open(surface_name,"r")
 
 with surface_in as infile:
@@ -915,31 +933,24 @@ print("   OF, HCl, HBr, HI")
 print(" ")
 
 nspecs=0
-#while True:
-#   try: 
-#      nspecs = int(input(" Number of ionic liquid molecules?  "))
-#      if nspecs <= 0 or nspecs > 8:
-#          raise ValueError
-#      break 
-#   except NameError:
-#      print(" ERROR! No valid number given! Please try again!")
-#   except ValueError:
-#      print(" ERROR! Only numbers between 1 and 8 are allowed!")
 
 # Read in the species and positions/rotations from file!
 
-# Second, read in the data file with the bromine positions
 list_name="adsorb_list.dat"
 
+
+if not os.path.isfile(list_name):
+   print("\n No adsorb_list.dat file could be found! \n")
+   sys.exit(1)
+
+
 list_in = open(list_name,"r")
+
 
 with list_in as infile:
    IL_lines = list_in.readlines()
 
 nspecs = len(IL_lines)
-#if len(IL_lines) != nspecs:
-#   print("Error! The file IL_list.dat must contain as many lines as the")
-#   print("  number of desired IL molecules.")
 
 #
 #    Now read in all surface molecules as class instances!

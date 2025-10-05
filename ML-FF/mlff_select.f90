@@ -136,6 +136,8 @@ logical::eval_mode ! Switch for just evaluate the content of a single ML_AB
 logical::eval_stat(10)  ! the progress for evaluation loops
 logical::no_adf  ! if no angular distribution functions shall be calculated
 logical,allocatable::atom_used(:)  ! boolean mask for blocking of treated atoms
+integer::alloc_stat  ! if allocation of array was successful
+character(len=100)::alloc_err  ! the error message for failed allocation
 !   for time measurement
 character(8)  :: date
 character(10) :: time
@@ -1036,9 +1038,20 @@ allocate(el_list_tmp(nelems_glob))
 allocate(el_nums_confs(nelems_glob,conf_num))
 allocate(el_nums_tmp(nelems_glob))
 !     The geometries (cartesian coordinates)
-allocate(xyz(3,natoms_max,conf_num))
+allocate(xyz(3,natoms_max,conf_num),stat=alloc_stat,errmsg=alloc_err)
+if (alloc_stat .ne. 0) then
+   write(*,*) "Allocation of xyz array failed:",trim(alloc_err)
+   write(*,*) "Please read in a smaller ML_AB or increase memory!"
+   stop
+end if
 !     The geometries (direct coordinates
-allocate(xyz_dir(3,natoms_max,conf_num))
+allocate(xyz_dir(3,natoms_max,conf_num),stat=alloc_stat,errmsg=alloc_err)
+if (alloc_stat .ne. 0) then
+   write(*,*) "Allocation of xyz_dir array failed:",trim(alloc_err)
+   write(*,*) "Please read in a smaller ML_AB or increase memory!"
+   stop
+end if
+
 !     The unit cell shapes
 allocate(cells(3,3,conf_num))
 !     The CTIFOR values
@@ -1048,7 +1061,13 @@ allocate(inds(natoms_max,conf_num))
 !     The reference energies
 allocate(energies(conf_num))
 !     The reference gradients
-allocate(grads(3,natoms_max,conf_num))
+allocate(grads(3,natoms_max,conf_num),stat=alloc_stat,errmsg=alloc_err)
+if (alloc_stat .ne. 0) then
+   write(*,*) "Allocation of grads array failed:",trim(alloc_err)
+   write(*,*) "Please read in a smaller ML_AB or increase memory!"
+   stop
+end if
+
 !     The reference stress tensors
 allocate(stress(6,conf_num))
 
@@ -1057,7 +1076,13 @@ do l=1,mlab_num
 !
 !     Again open the ML_AB file 
 !
-   open(unit=56,file=mlab_list(l),status="old")
+   open(unit=56,file=mlab_list(l),status="old",iostat=readstat)
+   if (readstat .ne. 0) then
+      write(*,*) 
+      write(*,*) "The file ",trim(mlab_list(l))," is not there!"
+      write(*,*) 
+      stop
+   end if
 
    write(*,*) "Read body of the file ",trim(mlab_list(l))," ..."
    write(34,*) "Read body of the file ",trim(mlab_list(l))," ..."
@@ -1302,17 +1327,43 @@ allocate(ind_all(natoms_sum))
 allocate(gradnorm_all(natoms_sum))
 !     The number of atoms in the surrounding (sorted by core charges)
 allocate(num_around(nelems,natoms_sum))
+allocate(num_around(nelems,natoms_sum),stat=alloc_stat,errmsg=alloc_err)
+if (alloc_stat .ne. 0) then
+   write(*,*) "Allocation of num_around array failed:",trim(alloc_err)
+   write(*,*) "Please read in a smaller ML_AB or increase memory!"
+   stop
+end if
 !     The coordinates of atoms in the surrounding (for xyz printout)
-allocate(environ(3,max_environ,natoms_sum))
+allocate(environ(3,max_environ,natoms_sum),stat=alloc_stat,errmsg=alloc_err)
+if (alloc_stat .ne. 0) then
+   write(*,*) "Allocation of environ array failed:",trim(alloc_err)
+   write(*,*) "Please read in a smaller ML_AB or increase memory!"
+   stop
+end if
 !     The core charges/elements of atoms in surrounding
-allocate(ind_env(max_environ,natoms_sum))
+allocate(ind_env(max_environ,natoms_sum),stat=alloc_stat,errmsg=alloc_err)
+if (alloc_stat .ne. 0) then
+   write(*,*) "Allocation of ind_env array failed:",trim(alloc_err)
+   write(*,*) "Please read in a smaller ML_AB or increase memory!"
+   stop
+end if
 !     The list of distances to atoms within surrounding (local)
 allocate(dist_list(max_environ))
 !     The radial distribution functions around all atoms
-allocate(rdf_all(ngrid,natoms_sum))
+allocate(rdf_all(ngrid,natoms_sum),stat=alloc_stat,errmsg=alloc_err)
+if (alloc_stat .ne. 0) then
+   write(*,*) "Allocation of rdf_all array failed:",trim(alloc_err)
+   write(*,*) "Please read in a smaller ML_AB or increase memory!"
+   stop
+end if
 !     The angular distribution functions around all atoms
 if (.not. no_adf) then        
-   allocate(adf_all(ngrid,natoms_sum))
+   allocate(adf_all(ngrid,natoms_sum),stat=alloc_stat,errmsg=alloc_err)
+   if (alloc_stat .ne. 0) then
+      write(*,*) "Allocation of adf_all array failed:",trim(alloc_err)
+      write(*,*) "Please read in a smaller ML_AB or increase memory!"
+      stop
+   end if
 end if
 !     The local list of angles in the environment
 allocate(angles(max_environ*max_environ))

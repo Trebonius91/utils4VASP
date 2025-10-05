@@ -46,7 +46,8 @@ logical::header
 character(len=2)::el_syms(10)
 character(len=150)::cdum
 real(kind=8)::factor,scale_dum
-integer::openstat
+integer::openstat,alloc_stat
+character(len=100)::alloc_err
 integer::traj_freq
 !
 !    only print the overview of utils4VASP scripts/programs and stop
@@ -555,11 +556,27 @@ if (eval_mlff) then
             read(27,*)
          end do
          if (allocated(xyz)) deallocate(xyz)
-         allocate(xyz(3,natoms))
+         allocate(xyz(3,natoms),stat=alloc_stat,errmsg=alloc_err)
+            if (alloc_stat .ne. 0) then
+            write(*,*) "Allocation of xyz array failed:",trim(alloc_err)
+            write(*,*) "Please read in a smaller ML_AB or increase memory!"
+            stop
+         end if
          if (allocated(grad)) deallocate(grad)
-         allocate(grad(3,natoms))
+         allocate(grad(3,natoms),stat=alloc_stat,errmsg=alloc_err)
+            if (alloc_stat .ne. 0) then
+            write(*,*) "Allocation of grad array failed:",trim(alloc_err)
+            write(*,*) "Please read in a smaller ML_AB or increase memory!"
+            stop
+         end if
          if (allocated(at_names)) deallocate(at_names)
-         allocate(at_names(natoms))
+         allocate(at_names(natoms),stat=alloc_stat,errmsg=alloc_err)
+            if (alloc_stat .ne. 0) then
+            write(*,*) "Allocation of at_names array failed:",trim(alloc_err)
+            write(*,*) "Please read in a smaller ML_AB or increase memory!"
+            stop
+         end if
+
 !
 !     Determine element symbols for all atoms
 !
@@ -740,7 +757,14 @@ if (md_mode .eq. "setup") then
    write(*,*) "  Number of frames: ",nframes
    write(*,*) "  ... completed!"
    write(*,*) " Read XDATCAR content ..."
-   allocate(xdat_content(xdat_lines))
+   allocate(xdat_content(xdat_lines),stat=alloc_stat,errmsg=alloc_err)
+   if (alloc_stat .ne. 0) then
+      write(*,*) "Allocation of xdat_content array failed:",trim(alloc_err)
+      write(*,*) "Please read in a smaller XDATCAR or increase memory!"
+      stop
+   end if
+
+
    open(unit=56,file="XDATCAR",status="old")
    do i=1,xdat_lines
       read(56,'(a)') xdat_content(i)

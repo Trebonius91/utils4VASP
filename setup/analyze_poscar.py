@@ -134,6 +134,14 @@ if angle_job:
 # Read in the POSCAR file
 poscar_name="POSCAR"
 
+# Check first if it is there!
+
+if os.path.isfile(poscar_name):
+   print("\n The POSCAR file could be located.\n")
+else:
+   print("\n No POSCAR file could be found! \n")
+   sys.exit(1)
+
 poscar_in = open(poscar_name,"r")
 
 # array for selective dynamics specifiers
@@ -380,7 +388,13 @@ if potcar_job:
    if os.path.isfile("POTCAR"):
       os.system("rm POTCAR")
    for el in elements:
-      os.system("cat "+pot_path+"potcar/PAW_PBE.52/"+el+"/POTCAR >> POTCAR")
+      path_current=pot_path+"potcar/PAW_PBE.52/"+el+"/POTCAR"
+      path_current = os.path.expanduser(path_current)
+      if os.path.isfile(path_current):
+         os.system("cat "+path_current+" >> POTCAR")
+      else:
+         print("\n No POTCAR template for "+el+" could be found! \n")
+         sys.exit(1)
 
    print(" The POTCAR file was written.")
 #

@@ -59,6 +59,6 @@ install:
 	cp evaluation/manage_neb.py $(BINDIR)
 	cp ML-FF/mlff_select $(BINDIR)
 	cp ML-FF/vasp2trainset $(BINDIR)
-	cp ML-FF/mlp_quality $(BINDIR)
+	cp ML-FF/mlip_quality $(BINDIR)
 
 .PHONY: all clean install

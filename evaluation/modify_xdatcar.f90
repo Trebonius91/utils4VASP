@@ -34,7 +34,7 @@ logical,allocatable::keep_atoms(:,:)
 logical::smooth_mode
 logical::eval_stat(10)
 logical::shift_cell,multiply_cell,pick_frame,print_xyz,print_last
-character(len=120)::a120,cdum,arg,adum
+character(len=320)::a120,cdum,arg,adum
 character(len=220)::a220
 character(len=50)::atest
 integer::alloc_stat
@@ -327,12 +327,12 @@ read(14,*) c_vec(1),c_vec(2),c_vec(3)
 !
 !    Read in the elements
 !
-allocate(el_names_read(10))
+allocate(el_names_read(50))
 el_names_read="XX"
 read(14,'(a)') cdum
 read(cdum,*,iostat=readstat) el_names_read
 nelems=0
-do i=1,10
+do i=1,50
    if (el_names_read(i) .eq. "XX") exit
    nelems=nelems+1
 end do

@@ -16,6 +16,9 @@ real(kind=8)::a_vec(3),b_vec(3),c_vec(3)
 real(kind=8),allocatable::a_vecs(:,:),b_vecs(:,:),c_vecs(:,:)
 character(len=2),allocatable::el_names_read(:),el_names(:)
 character(len=2),allocatable::at_names(:),at_names2(:)
+real(kind=8),allocatable::at_masses(:)
+real(kind=8),allocatable::vel_act(:,:),vel_old(:,:)
+real(kind=8)::totmass
 integer,allocatable::el_nums(:),el_nums_tmp(:)
 real(kind=8)::act_num(3),factor
 real(kind=8),allocatable::xyz(:,:,:),xyz2(:,:,:)
@@ -26,9 +29,15 @@ integer::frame_first,frame_last,line_num
 integer::read_freq,status
 logical::npt,print_npt
 logical::remove_mode
+logical::remove_transrot
+!  For removal of overall translation and rotation
+real(kind=8)::vtot(3),mang(3),eps,weigh,xdel,ydel,zdel
+real(kind=8)::xx,xy,xz,yy,yz,zz,xtot,ytot,ztot
+real(kind=8)::tensor(3,3),vang(3)
 character(len=40)::remove_com
 character(len=1)::remove_dim
 character(len=2)::remove_sign
+real(kind=8)::com_act(3)
 real(kind=8)::remove_border
 logical,allocatable::keep_atoms(:,:)
 logical::smooth_mode
@@ -106,6 +115,10 @@ write(*,*) " -frame_last=[number] : The number of the last frame to be printed "
 write(*,*) "   (default: last frame of the trajectory)"
 write(*,*) " -frame_first=[number] : The number of the first frame to be printed "
 write(*,*) "   (default: frame No. 1)"
+write(*,*) " -remove_transrot : Remove all translation and rotation of the "
+write(*,*) "   system by placing each frame at the center of the unit cell "
+write(*,*) "   (center of mass) and aligned to principial moments of inertia."
+write(*,*) "   Should only be applied to isolated molecular systems!"
 write(*,*) " -smooth : Add this to remove all sudden jumps of atoms between "
 write(*,*) "   frames due to image flags (e.g. for VDOS calculations)."
 write(*,*) " -print_npt : Print a NVT trajectory in the NPT format, e.g., for "
@@ -231,6 +244,18 @@ do i = 1, command_argument_count()
       print_npt=.true.
    end if
 end do
+!
+!     Remove all translation and rotation of the system by placing 
+!     its center of mass in the center of the unit cell, aligned 
+!     along its principial moments of inertia
+!
+remove_transrot=.false.
+do i = 1, command_argument_count()
+   call get_command_argument(i, arg)
+   if (trim(arg(1:16))  .eq. "-remove_transrot") then
+      remove_transrot=.true.
+   end if
+end do
 
 !
 !     Remove sudden jumps of atoms between frames: smooth mode
@@ -288,7 +313,7 @@ end do
 
 if ((.not. shift_cell) .and. (.not. multiply_cell) .and. (.not. pick_frame) .and. &
            &  (.not. print_xyz) .and. (.not. print_last) .and. (read_freq .eq. 1) .and. &
-           &  (.not. print_npt) .and. (.not. remove_mode)) then
+           &  (.not. print_npt) .and. (.not. remove_mode) .and. (.not. remove_transrot)) then
    write(*,*)
    write(*,*) "Please give at least one of the possible commands!"
    write(*,*)
@@ -742,6 +767,185 @@ if (remove_mode) then
    end do
 end if
 !
+!    D: Remove all net translation and rotation from the system (should be an
+!      isolated molecule). Each frame is placed with its center of mass in the 
+!      middle of the unit cell; and the content is aligned with respect to its 
+!      principial moments of inertia
+!
+if (remove_transrot) then
+!
+!    First, remove all image flags to avoid sudden jumps of COM
+!
+   do i=frame_first,frame_last
+      if (i .gt. frame_first) then
+         do j=1,natoms     
+            do k=1,3
+               if (xyz2(k,j,i) .gt. xyz2(k,j,i-1)+0.5) then
+                  xyz2(k,j,i) = xyz2(k,j,i)-1.0
+               end if
+               if (xyz2(k,j,i) .lt. xyz2(k,j,i-1)-0.5) then
+                  xyz2(k,j,i) = xyz2(k,j,i)+1.0
+               end if
+            end do
+         end do
+      end if
+   end do
+!
+!    Determine the atomic masses 
+!
+   allocate(at_masses(natoms))
+   allocate(vel_act(3,natoms),vel_old(3,natoms))
+   do i=1,natoms
+      call atommass(at_names(i),at_masses(i)) 
+   end do
+   totmass=sum(at_masses)
+!
+!    Determine the center of mass of the current trajectory frame
+!
+   do i=frame_first,frame_last
+      com_act=0.d0   
+      do j=1,natoms
+         com_act=com_act+xyz2(:,j,i)*at_masses(j)
+      end do
+      com_act=com_act/totmass    
+      write(*,*) "com",com_act
+!      do j=1,natoms
+!         do k=1,3
+!            xyz2(k,j,i)=xyz2(k,j,i)-com_act(k)+0.5d0
+!         end do
+!      end do 
+
+!
+!    Rotate the current frame to the standard moments of inertia
+!
+      vel_act=0
+      if (i .gt. frame_first) then
+         do j=1,natoms
+            vel_act(:,j)=xyz2(:,j,i)-xyz2(:,j,i-1)
+         end do 
+         vel_old=vel_act
+!
+!     Compute linear velocity of the system center of mass
+!
+         do j = 1, natoms
+            weigh = at_masses(j)
+            do k = 1, 3
+               vtot(j) = vtot(j) + vel_act(k,j)*weigh
+            end do
+         end do
+         vtot=vtot/totmass
+         write(*,*) "vtot",vtot
+!
+!     Compute angular momentum for overall system
+!
+         mang = 0.0d0
+         xtot=com_act(1)
+         ytot=com_act(2)
+         ztot=com_act(3)
+
+         do j = 1, natoms
+            weigh = at_masses(j)
+            mang(1) = mang(1) + (xyz2(2,j,i)*vel_act(3,j)-xyz2(3,j,i)*vel_act(2,j))*weigh
+            mang(2) = mang(2) + (xyz2(3,j,i)*vel_act(1,j)-xyz2(1,j,i)*vel_act(3,j))*weigh
+            mang(3) = mang(3) + (xyz2(1,j,i)*vel_act(2,j)-xyz2(2,j,i)*vel_act(1,j))*weigh
+         end do
+
+         mang(1) = mang(1) - (ytot*vtot(3)-ztot*vtot(2))*totmass
+         mang(2) = mang(2) - (ztot*vtot(1)-xtot*vtot(3))*totmass
+         mang(3) = mang(3) - (xtot*vtot(2)-ytot*vtot(1))*totmass
+         write(*,*) "mang",mang
+!
+!     calculate the moment of inertia tensor
+!
+         xx = 0.0d0
+         xy = 0.0d0
+         xz = 0.0d0
+         yy = 0.0d0
+         yz = 0.0d0
+         zz = 0.0d0
+
+         do j = 1, natoms
+            weigh = at_masses(j)
+            xdel = xyz2(1,j,i) - xtot
+            ydel = xyz2(2,j,i) - ytot
+            zdel = xyz2(3,j,i) - ztot
+            xx = xx + xdel*xdel*weigh
+            xy = xy + xdel*ydel*weigh
+            xz = xz + xdel*zdel*weigh
+            yy = yy + ydel*ydel*weigh
+            yz = yz + ydel*zdel*weigh
+            zz = zz + zdel*zdel*weigh
+         end do
+         tensor(1,1) = yy + zz
+         tensor(2,1) = -xy
+         tensor(3,1) = -xz
+         tensor(1,2) = -xy
+         tensor(2,2) = xx + zz
+         tensor(3,2) = -yz
+         tensor(1,3) = -xz
+         tensor(2,3) = -yz
+         tensor(3,3) = xx + yy
+!
+!     avoid bad behavior (singularity) for diatomic systems
+!
+
+         if (natoms .le. 2) then
+            eps = 0.000001d0
+            tensor(1,1) = tensor(1,1) + eps
+            tensor(2,2) = tensor(2,2) + eps
+            tensor(3,3) = tensor(3,3) + eps
+         end if
+! 
+!     invert the moment of inertia tensor
+!
+         call invert (3,tensor)
+!
+!     compute angular velocity 
+!
+         do k = 1, 3
+            vang(k) = 0.0d0
+            do l = 1, 3
+               vang(k) = vang(k) + tensor(k,l)*mang(l)
+            end do
+        end do
+
+
+!
+!     eliminate any translation of the overall system
+!
+         do j = 1, natoms
+            do k = 1, 3
+               vel_act(k,j) = vel_act(k,j) - vtot(j)
+            end do
+         end do
+!
+!     eliminate any rotation of the overall system
+!
+         do j = 1, natoms
+            xdel = xyz2(1,j,i) - xtot
+            ydel = xyz2(2,j,i) - ytot
+            zdel = xyz2(3,j,i) - ztot
+            vel_act(1,j) = vel_act(1,j) - vang(2)*zdel + vang(3)*ydel
+            vel_act(2,j) = vel_act(2,j) - vang(3)*xdel + vang(1)*zdel
+            vel_act(3,j) = vel_act(3,j) - vang(1)*ydel + vang(2)*xdel
+         end do
+!
+!     Now correct the xyz structure from the velocity: 
+!     Subtract the old velocity (difference to previous frame) 
+!     and then add the new velocity
+! 
+         do j=1,natoms
+            xyz2(:,j,i)=xyz2(:,j,i)-vel_old(:,j)
+            xyz2(:,j,i)=xyz2(:,j,i)+vel_act(:,j)
+         end do 
+      end if
+   end do
+    
+
+end if        
+
+
+!
 !    D: Write structure to XYZ trajectory file
 !      During this, convert coordinates to cartesian!
 !      If not ordered, write a modified XDATCAR file (in direct coordinates) instead
@@ -827,7 +1031,7 @@ else
       write(*,*) "The -print_npt command is given, the trajectory is written as NpT"
    end if
    if (shift_cell .or. multiply_cell .or. print_last .or. (read_freq .gt. 1) .or. &
-                   & print_npt) then
+                   & print_npt .or. remove_transrot) then
       write(*,*) "Write trajectory in VASP format to file XDATCAR_mod"
       write(*,'(a,i10,a,i10,a)') " Frame ",frame_first," to frame ",frame_last," will be written."
       open(unit=34,file="XDATCAR_mod",status="replace")
@@ -921,4 +1125,305 @@ write(*,*)
 write(*,*) "modify_xdatcar has finished all tasks, goodbye!"
 write(*,*)
 
-end program modify_xdatcar        
+end program modify_xdatcar  
+
+!
+!     ###############################################################
+!     ##                                                           ##
+!     ##  subroutine atommass  --  initialize atomic masses        ##
+!     ##                                                           ##
+!     ###############################################################
+!
+!     Normally the atomic masses needed for dynamics are read in
+!     from the ffield file.
+!     But in the case of EVB-QMDFF no masses are specified in the ffield
+!     so they need to defined here in this file.
+!     The masses from H up to Rn are availiable
+!     They are taken from "Das große Tafelwerk, 1. Auflage 2003"
+!
+!     part of EVB --> Taken from Caracal (J. Steffen et al.)
+!
+subroutine atommass(adum,mass_act)
+implicit none
+character(len=2)::adum
+real(kind=8)::mass_act
+!
+!     initialize the element-masses
+!     Convert all letters to upcase letters in order to avoid
+!     errors with atom symbols!
+!
+call upcase(adum)
+if (adum .eq. "H") then
+   mass_act=1.00782503207d0
+else if (adum .eq. "D") then
+   mass_act=2.0141017778d0
+else if (adum .eq. "HE") then
+   mass_act=4.00260d0
+else if (adum .eq. "LI") then
+   mass_act=6.94000d0
+else if (adum .eq. "BE") then
+   mass_act=9.01218d0
+else if (adum .eq. "B") then
+   mass_act=10.81000d0
+else if (adum .eq. "C") then
+   mass_act=12.00000d0
+else if (adum .eq. "N") then
+   mass_act=14.0030740048d0
+else if (adum .eq. "O") then
+   mass_act=15.99491461956d0
+else if (adum .eq. "F") then
+   mass_act=18.99840d0
+else if (adum .eq. "NE") then
+   mass_act=20.18d0
+else if (adum .eq. "NA") then
+   mass_act=23.0d0
+else if (adum .eq. "MG") then
+   mass_act=24.31d0
+else if (adum .eq. "AL") then
+   mass_act=26.98d0
+else if (adum .eq. "SI") then
+   mass_act=28.09d0
+else if (adum .eq. "P") then
+   mass_act=30.97d0
+else if (adum .eq. "S") then
+   mass_act=32.06000d0
+else if (adum .eq. "CL") then
+   mass_act=34.96885268d0
+else if (adum .eq. "AR") then
+   mass_act=39.95d0
+else if (adum .eq. "K") then
+   mass_act=39.1d0
+else if (adum .eq. "CA") then
+   mass_act=40.08d0
+else if (adum .eq. "SC") then
+   mass_act=44.96d0
+else if (adum .eq. "TI") then
+   mass_act=47.88d0
+else if (adum .eq. "V") then
+   mass_act=50.94d0
+else if (adum .eq. "CR") then
+   mass_act=52.0d0
+else if (adum .eq. "MN") then
+   mass_act=54.94d0
+else if (adum .eq. "FE") then
+   mass_act=55.85d0
+else if (adum .eq. "CO") then
+   mass_act=58.93d0
+else if (adum .eq. "NI") then
+   mass_act=58.69d0
+else if (adum .eq. "CU") then
+   mass_act=63.55d0
+else if (adum .eq. "ZN") then
+   mass_act=65.39d0
+else if (adum .eq. "GA") then
+   mass_act=69.72d0
+else if (adum .eq. "GE") then
+   mass_act=72.61d0
+else if (adum .eq. "AS") then
+   mass_act=74.92d0
+else if (adum .eq. "SE") then
+   mass_act=78.96d0
+else if (adum .eq. "BR") then
+   mass_act=78.9183371d0
+else if (adum .eq. "KR") then
+   mass_act=83.80d0
+else if (adum .eq. "RB") then
+   mass_act=85.47d0
+else if (adum .eq. "SR") then
+   mass_act=87.62d0
+else if (adum .eq. "Y") then
+   mass_act=88.91d0
+else if (adum .eq. "ZR") then
+   mass_act=91.22d0
+else if (adum .eq. "NB") then
+   mass_act=92.91d0
+else if (adum .eq. "MO") then
+   mass_act=95.94d0
+else if (adum .eq. "TC") then
+   mass_act=98d0
+else if (adum .eq. "RU") then
+   mass_act=101.07d0
+else if (adum .eq. "RH") then
+   mass_act=102.91d0
+else if (adum .eq. "PD") then
+   mass_act=106.42d0
+else if (adum .eq. "AG") then
+   mass_act=107.87d0
+else if (adum .eq. "CD") then
+   mass_act=112.41d0
+else if (adum .eq. "IN") then
+   mass_act=114.82d0
+else if (adum .eq. "SN") then
+   mass_act=118.71d0
+else if (adum .eq. "SB") then
+   mass_act=121.76d0
+else if (adum .eq. "TE") then
+   mass_act=127.60d0
+else if (adum .eq. "I") then
+   mass_act=125.90d0
+else if (adum .eq. "XE") then
+   mass_act=131.29d0
+else if (adum .eq. "CS") then
+   mass_act=132.91d0
+else if (adum .eq. "BA") then
+   mass_act=137.33d0
+else if (adum .eq. "LA") then
+   mass_act=138.91d0
+else if (adum .eq. "HF") then
+   mass_act=178.49d0
+else if (adum .eq. "TA") then
+   mass_act=180.95d0
+else if (adum .eq. "W") then
+   mass_act=183.95d0
+else if (adum .eq. "RE") then
+   mass_act=186.21d0
+else if (adum .eq. "OS") then
+   mass_act=190.23d0
+else if (adum .eq. "IR") then
+   mass_act=192.22d0
+else if (adum .eq. "PT") then
+   mass_act=195.08d0
+else if (adum .eq. "AU") then
+   mass_act=196.97d0
+else if (adum .eq. "HG") then
+   mass_act=200.59d0
+else if (adum .eq. "TL") then
+   mass_act=204.38d0
+else if (adum .eq. "PB") then
+   mass_act=207.2d0
+else if (adum .eq. "BI") then
+   mass_act=208.98d0
+else if (adum .eq. "PO") then
+   mass_act=209d0
+else if (adum .eq. "AT") then
+   mass_act=210d0
+else if (adum .eq. "RN") then
+   mass_act=222d0
+end if
+
+return
+end subroutine atommass
+
+!
+!     subroutine upcase: converts a text string to all upper
+!            case letters
+!
+!     part of EVB  --> Taken from Caracal (J. Steffen et al.)
+!
+subroutine upcase (string)
+implicit none
+integer::i,size,len
+integer::code,ichar
+character(len=1)::char
+character(len=1)::letter
+character(len=*)::string
+!
+!     convert lower case to upper case one letter at a time
+!
+size = len(string)
+do i = 1, size
+   letter = string(i:i)
+   code = ichar(letter)
+   if (letter.ge.'a' .and. letter.le.'z') &
+      &   string(i:i) = char(code-32)
+end do
+
+return
+end subroutine upcase
+
+!
+!     subroutine invert: inverts a matrix using the Gauss-Jordan method
+!     needed for dynamics
+!     variables and parameters:
+!     n     dimension of the matrix to be inverted
+!     a     matrix to invert; contains inverse on exit
+!
+!     part of EVB --> Taken from Caracal (J. Steffen et al.)
+!
+subroutine invert (n,a)
+implicit none
+integer::i,j,k,n
+integer::icol,irow
+integer,allocatable::ipivot(:)
+integer,allocatable::indxc(:)
+integer,allocatable::indxr(:)
+real(kind=8)::big,temp
+real(kind=8)::pivot
+real(kind=8)::a(n,*)
+!
+!     perform dynamic allocation of some local arrays
+!
+allocate (ipivot(n))
+allocate (indxc(n))
+allocate (indxr(n))
+!
+!     perform matrix inversion via the Gauss-Jordan algorithm
+!
+do i = 1, n
+   ipivot(i) = 0
+end do
+do i = 1, n
+   big = 0.0d0
+   do j = 1, n
+      if (ipivot(j) .ne. 1) then
+         do k = 1, n
+            if (ipivot(k) .eq. 0) then
+               if (abs(a(j,k)) .ge. big) then
+                  big = abs(a(j,k))
+                  irow = j
+                  icol = k
+               end if
+            else if (ipivot(k) .gt. 1) then
+               write (*,'(/," INVERT  --  Cannot Invert a Singular Matrix")')
+               stop
+            end if
+         end do
+      end if
+   end do
+   ipivot(icol) = ipivot(icol) + 1
+   if (irow .ne. icol) then
+      do j = 1, n
+         temp = a(irow,j)
+         a(irow,j) = a(icol,j)
+         a(icol,j) = temp
+      end do
+   end if
+   indxr(i) = irow
+   indxc(i) = icol
+   if (a(icol,icol) .eq. 0.0d0) then
+      write (*,'(/," INVERT  --  Cannot Invert a Singular Matrix")')
+      stop
+   end if
+   pivot = a(icol,icol)
+   a(icol,icol) = 1.0d0
+   do j = 1, n
+      a(icol,j) = a(icol,j) / pivot
+   end do
+   do j = 1, n
+      if (j .ne. icol) then
+         temp = a(j,icol)
+         a(j,icol) = 0.0d0
+         do k = 1, n
+            a(j,k) = a(j,k) - a(icol,k)*temp
+         end do
+      end if
+   end do
+end do
+do i = n, 1, -1
+   if (indxr(i) .ne. indxc(i)) then
+      do k = 1, n
+         temp = a(k,indxr(i))
+         a(k,indxr(i)) = a(k,indxc(i))
+         a(k,indxc(i)) = temp
+      end do
+   end if
+end do
+!
+!     perform deallocation of some local arrays
+!
+deallocate (ipivot)
+deallocate (indxc)
+deallocate (indxr)
+
+return
+end subroutine invert

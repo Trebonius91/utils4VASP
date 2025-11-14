@@ -950,16 +950,26 @@ if (md_mode .eq. "eval") then
                read(78,*) xyz(:,j),grad(:,j)
             end do
          end if
-
-         if(index(a160,'VOLUME and BASIS-vectors').ne.0)then
-            read(78,*)
-            read(78,*)
-            read(78,*)
-            read(78,*)
-            read(78,*) cell_vecs(1,:)
-            read(78,*) cell_vecs(2,:)
-            read(78,*) cell_vecs(3,:)
-         end if
+!
+!     Read in volume and basis vectors from POSCAR to avoid problem with missing spaces
+!      for large numbers
+!
+         open(unit=127,file="POSCAR",status="old")
+         read(127,*)
+         read(127,*)
+         read(127,*) cell_vecs(1,:)
+         read(127,*) cell_vecs(2,:)
+         read(127,*) cell_vecs(3,:)
+         close(127)
+!         if(index(a160,'VOLUME and BASIS-vectors').ne.0)then
+!            read(78,*)
+!            read(78,*)
+!            read(78,*)
+!            read(78,*)
+!            read(78,*) cell_vecs(1,:)
+!            read(78,*) cell_vecs(2,:)
+!            read(78,*) cell_vecs(3,:)
+!         end if
   
       end do
       if (natoms .lt. 1) then

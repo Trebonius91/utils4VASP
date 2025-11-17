@@ -43,6 +43,8 @@ integer::nfolders,nelems,natoms,nstrucs,nframes
 integer::el_nums(10)
 logical::write_aenet,write_mace
 logical::header
+logical::skip_large
+logical,allocatable::skip_frame(:)
 character(len=2)::el_syms(10)
 character(len=150)::cdum
 real(kind=8)::factor,scale_dum
@@ -114,6 +116,8 @@ write(*,*) "   frame will be written to file for VASP calculation."
 write(*,*) " -name=[speficier] : give a unique string to specify the current calculation"
 write(*,*) " -aenet : The output will be for the aenet program (atomisticnet)"
 write(*,*) " -mace : The output will be for the MACE program (fit foundation model)"
+write(*,*) " -skip_large : If structures with large gradient components shall be skipped"
+write(*,*) "   during the collection of the results."
 write(*,*) "For the aenet option, after execution, a number of XSF files (one for each"
 write(*,*) " structure) is written into a new folder named 'xsf_files'. Further, a list"
 write(*,*) " of all file names is written into the file 'xsf_list.dat'. The file names "
@@ -203,6 +207,18 @@ do i = 1, command_argument_count()
    call get_command_argument(i, arg)
    if (trim(arg)  .eq. "-mace") then
       write_mace = .true.
+   end if
+end do
+
+!
+!     If structures with large gradient components shall be skipped 
+!     during the collection of the results
+!
+skip_large = .false.
+do i = 1, command_argument_count()
+   call get_command_argument(i, arg)
+   if (trim(arg)  .eq. "-skip_large") then
+      skip_large = .true.
    end if
 end do
 
@@ -868,6 +884,7 @@ if (md_mode .eq. "eval") then
    write(*,*) 
    write(*,*) "Number of calculated frames: ",nframes
 
+   allocate(skip_frame(nframes))
    write(*,*)
    write(*,*) "Read in all OUTCAR files and write training set file(s) ..."
 !
@@ -892,6 +909,7 @@ if (md_mode .eq. "eval") then
       natoms=0
       el_nums=0
       inc3=1
+      skip_frame(i)=.false.
       do  
          read(78,'(a)',iostat=readstat) a160
          if (readstat .ne. 0) exit
@@ -951,6 +969,9 @@ if (md_mode .eq. "eval") then
                if ((grad(1,j) .gt. 50.0) .or. (grad(2,j) .gt. 50.0) .or. &
                         & (grad(3,j) .gt. 50.0)) then
                   write(*,*) "WARNING! A force component of atom ",j," in structure ",i," is huge!"
+                  if (skip_large) then
+                     skip_frame(i)=.false.
+                  end if
                end if
             end do
 !
@@ -988,52 +1009,60 @@ if (md_mode .eq. "eval") then
 !     Write output for current frame (aenet)
 !
       if (write_aenet) then
-         if (i .lt. 10) then
-            write(out_name,'(a,a,i1)') trim(basename),"_frame",i
-         else if (i .lt. 100) then
-            write(out_name,'(a,a,i2)') trim(basename),"_frame",i
-         else if (i .lt. 1000) then
-            write(out_name,'(a,a,i3)') trim(basename),"_frame",i
-         else 
-            write(out_name,'(a,a,i4)') trim(basename),"_frame",i
-         end if   
-         open(unit=30,file="xsf_files/" // trim(out_name) // ".xsf")
-         write(30,'(a,f14.8,a)') "# total energy = ",energy," eV"
-         write(30,*)
-         write(30,'(a)') "CRYSTAL"
-         write(30,'(a)') "PRIMVEC"
-         do j=1,3
-            write(30,'(3f14.8)') cell_vecs(j,:)
-         end do
-         write(30,'(a)') "PRIMCOORD"
-         write(30,'(i6,i1)') natoms,1
-         do j=1,natoms
-            write(30,'(a,a,6f14.8)') at_names(j)," ",xyz(:,j),grad(:,j)
-         end do
-
-         close(30)
+         if (.not. skip_frame(i)) then
+            if (i .lt. 10) then
+               write(out_name,'(a,a,i1)') trim(basename),"_frame",i
+            else if (i .lt. 100) then
+               write(out_name,'(a,a,i2)') trim(basename),"_frame",i
+            else if (i .lt. 1000) then
+               write(out_name,'(a,a,i3)') trim(basename),"_frame",i
+            else 
+               write(out_name,'(a,a,i4)') trim(basename),"_frame",i
+            end if   
+            open(unit=30,file="xsf_files/" // trim(out_name) // ".xsf")
+            write(30,'(a,f14.8,a)') "# total energy = ",energy," eV"
+            write(30,*)
+            write(30,'(a)') "CRYSTAL"
+            write(30,'(a)') "PRIMVEC"
+            do j=1,3
+               write(30,'(3f14.8)') cell_vecs(j,:)
+            end do
+            write(30,'(a)') "PRIMCOORD"
+            write(30,'(i6,i1)') natoms,1
+            do j=1,natoms
+               write(30,'(a,a,6f14.8)') at_names(j)," ",xyz(:,j),grad(:,j)
+            end do
+            close(30)
 !
 !     Write name of output file to list of filenames
 !
-         write(45,'(a,a,a)') "./xsf_files/", trim(out_name),".xsf"
+            write(45,'(a,a,a)') "./xsf_files/", trim(out_name),".xsf"
+         else
+            write(*,*) "Frame ",i," is skipped in the output due to large force components."
+         end if
+
       end if
 
 !
 !     Write output for current frame (MACE)
 !
       if (write_mace) then
-         write(48,*) natoms
+         if (.not. skip_frame(i)) then
+            write(48,*) natoms
   !       write(48,'(a,9f13.8,a,9f13.8,a,a,f20.10,a)') 'REF_stress="',stress(1,:),stress(2,:),&
   !               & stress(3,:),'" Lattice="',cell_vecs(1,:),cell_vecs(2,:),&
   !               & cell_vecs(3,:),'" Properties=species:S:1:pos:R:3:molID:I:1:REF_forces:R:3',&
   !               & ' Nmols=1 REF_energy=',energy,' pbc="T T T"'
-         write(48,'(a,9f13.8,a,a,f20.10,a)') ' Lattice="',cell_vecs(1,:),cell_vecs(2,:),&
-                 & cell_vecs(3,:),'" Properties=species:S:1:pos:R:3:molID:I:1:REF_forces:R:3',&
-                 & ' Nmols=1 REF_energy=',energy,' pbc="T T T"'
+            write(48,'(a,9f13.8,a,a,f20.10,a)') ' Lattice="',cell_vecs(1,:),cell_vecs(2,:),&
+                    & cell_vecs(3,:),'" Properties=species:S:1:pos:R:3:molID:I:1:REF_forces:R:3',&
+                    & ' Nmols=1 REF_energy=',energy,' pbc="T T T"'
 
-         do j=1,natoms
-            write(48,'(a,a,3f14.8,a,3f14.8)') at_names(j),"  ",xyz(:,j),"  0  ",grad(:,j)
-         end do
+            do j=1,natoms
+               write(48,'(a,a,3f14.8,a,3f14.8)') at_names(j),"  ",xyz(:,j),"  0  ",grad(:,j)
+            end do
+         else
+            write(*,*) "Frame ",i," is skipped in the output due to large force components."
+         end if
       end if
    end do
    write(*,*) "... completed!"

@@ -948,19 +948,24 @@ if (md_mode .eq. "eval") then
 
             do j=1,natoms
                read(78,*) xyz(:,j),grad(:,j)
+               if ((grad(1,j) .gt. 50.0) .or. (grad(2,j) .gt. 50.0) .or. &
+                        & (grad(3,j) .gt. 50.0)) then
+                  write(*,*) "WARNING! A force component of atom ",j," in structure ",i," is huge!"
+               end if
             end do
-         end if
 !
 !     Read in volume and basis vectors from POSCAR to avoid problem with missing spaces
 !      for large numbers
 !
-         open(unit=127,file="POSCAR",status="old")
-         read(127,*)
-         read(127,*)
-         read(127,*) cell_vecs(1,:)
-         read(127,*) cell_vecs(2,:)
-         read(127,*) cell_vecs(3,:)
-         close(127)
+            open(unit=127,file="POSCAR",status="old")
+            read(127,*)
+            read(127,*)
+            read(127,*) cell_vecs(1,:)
+            read(127,*) cell_vecs(2,:)
+            read(127,*) cell_vecs(3,:)
+            close(127)
+         end if
+
 !         if(index(a160,'VOLUME and BASIS-vectors').ne.0)then
 !            read(78,*)
 !            read(78,*)

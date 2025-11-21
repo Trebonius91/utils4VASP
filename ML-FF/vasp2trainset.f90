@@ -20,7 +20,7 @@ program vasp2trainset
 implicit none
 
 integer::i,j,k,inc,inc2,inc3
-logical::eval_neb,eval_mlff,does_exist,eval_md
+logical::eval_neb,eval_mlff,does_exist,eval_md,eval_aimd
 character(len=120)::arg
 character(len=160)::a160
 character(len=80)::a80,md_mode
@@ -39,6 +39,7 @@ character(len=150),allocatable::xdat_content(:)
 integer::readstat
 integer::xdat_lines
 integer::nfolders,nelems,natoms,nstrucs,nframes
+integer::read_freq,frame_act,frames_read
 ! real(kind=8)::stress(3,3)
 integer::el_nums(10)
 logical::write_aenet,write_mace
@@ -47,6 +48,7 @@ logical::skip_large
 logical,allocatable::skip_frame(:)
 character(len=2)::el_syms(10)
 character(len=150)::cdum
+character(len=80)::outcar_name
 real(kind=8)::factor,scale_dum
 integer::openstat,alloc_stat
 character(len=100)::alloc_err
@@ -104,6 +106,9 @@ write(*,*) " by the on-the-fly learning of interest is located."
 write(*,*) "The command line argument decides which kind of calculation will be done:"
 write(*,*) " -neb : evaluates a NEB calculation."
 write(*,*) " -ml_ff : evaluates a ML-FF learning calculation."
+write(*,*) " -aimd : evaluates a VASP AIMD calculation (OUTCAR file)"
+write(*,*) " -outcar_name=[name] : Name of the OUTCAR file (default: OUTCAR)"
+write(*,*) " -read_freq : Only each Nth AIMD frame will be converted to training set."
 write(*,*) " -md_traj=[mode] : picks frames from a VASP trajectory (XDATCAR)"
 write(*,*) " Ensemble (NVT or NpT) of the trajectory is detected automatically."
 write(*,*) "   If mode = setup, a folder with a POSCAR file will be generated for each"
@@ -150,6 +155,39 @@ do i = 1, command_argument_count()
    call get_command_argument(i, arg)
    if (trim(arg)  .eq. "-ml_ff") then
       eval_mlff = .true.
+   end if
+end do
+
+!
+!     If a AIMD trajectory (OUTCAR) shall be evaluated
+!
+eval_aimd = .false.
+do i = 1, command_argument_count()
+   call get_command_argument(i, arg)
+   if (trim(arg)  .eq. "-aimd") then
+      eval_aimd = .true.
+   end if
+end do
+!
+!     The frequency in which the AIMD frames will be written 
+!     to the training set file
+!
+read_freq=1
+do i = 1, command_argument_count()
+   call get_command_argument(i, arg)
+   if (trim(arg(1:11))  .eq. "-read_freq=") then
+      read(arg(12:),*) read_freq
+   end if
+end do
+
+!
+!     The name of the OUTCAR file, if not the default (OUTCAR)
+!
+outcar_name="OUTCAR"
+do i = 1, command_argument_count()
+   call get_command_argument(i, arg)
+   if (trim(arg(1:13))  .eq. "-outcar_name=") then
+      read(arg(14:),*) outcar_name
    end if
 end do
 
@@ -224,9 +262,9 @@ end do
 
 
 
-if (.not. eval_neb .and. .not. eval_mlff .and. .not. eval_md) then
+if (.not. eval_neb .and. .not. eval_mlff .and. .not. eval_aimd .and. .not. eval_md) then
    write(*,*)
-   write(*,*) "Please choose either the -neb or the -ml_ff or the -md_traj option!"
+   write(*,*) "Please choose either the -neb or the -ml_ff or the -aimd or the -md_traj option!"
    write(*,*)
    stop
 end if
@@ -675,6 +713,157 @@ if (eval_mlff) then
    close(27)
 
 end if       
+
+!
+!     Evaluate an AIMD trajectory: read in positions and forces from OUTCAR file
+!
+if (eval_aimd) then
+   write(*,*)
+   write(*,*) "Chosen mode: evaluation of AIMD trajectory."
+   write(*,*) "OUTCAR file ",trim(outcar_name)," is read ..."
+   write(*,*)
+!
+!     First, read in number of atoms and element symbols
+!
+   inc3=1
+   el_nums=0
+   frames_read=0
+   open(unit=11,file=outcar_name,status="old",iostat=readstat)
+   if (readstat .ne. 0) then
+      write(*,*) "The ",trim(outcar_name)," file of the AIMD simulation is missing!"
+      stop
+   end if 
+   do
+      read(11,'(a)',iostat=readstat) a160
+      if (readstat .ne. 0) exit
+!
+!     Number of atoms and element symbols of them
+!
+      if (index(a160,"ions per type =") .ne. 0) then
+         read(a160,*,iostat=readstat) a80,a80,a80,a80,el_nums
+         do j=1,10
+            if (el_nums(j) .ne. 0) then
+               nelems=j
+            end if
+         end do
+         natoms=sum(el_nums(1:nelems))
+         if (allocated(xyz)) deallocate(xyz)
+         allocate(xyz(3,natoms))
+         if (allocated(grad)) deallocate(grad)
+         allocate(grad(3,natoms))
+         if (allocated(at_names)) deallocate(at_names)
+         allocate(at_names(natoms))
+!
+!     Determine element symbols for all atoms
+!        
+         at_names="XX"
+         inc2=1
+         do j=1,nelems
+            do k=1,el_nums(j)
+               at_names(inc2)=el_syms(j)
+               inc2=inc2+1
+            end do
+         end do
+
+      end if
+      if (index(a160,"TITEL") .ne. 0) then
+         read(a160,*) a80,a80,a80,el_syms(inc3)
+         inc3=inc3+1
+         if (inc3 .eq. nelems) exit
+      end if
+   end do
+   close(11)
+   write(*,*) "Number of atoms in the system: ",natoms
+!
+!    Second, read in the positions and forces for all frames
+!
+   frame_act=0
+   open(unit=11,file=outcar_name,status="old")
+   do
+      read(11,'(a)',iostat=readstat) a160
+      if (readstat .ne. 0) exit
+!
+!     Number of atoms and element symbols of them
+!
+      if (index(a160,"direct lattice vectors") .ne. 0) then
+         frame_act = frame_act + 1
+!
+!     Only read in the frame if its in the correct reading frequency
+!
+         if (modulo(frame_act,read_freq) .eq. 0) then
+            read(11,*) cell_vecs(1,:)
+            read(11,*) cell_vecs(2,:)
+            read(11,*) cell_vecs(3,:)
+            frames_read=frames_read+1
+            do
+               read(11,'(a)',iostat=readstat) a160
+               if (readstat .ne. 0) exit
+               if (index(a160,"TOTAL-FORCE (eV/Angst)") .ne. 0) then
+                  read(11,*)
+                  do j=1,natoms
+                     read(11,*) xyz(:,j),grad(:,j)
+                  end do
+                  exit
+               end if
+            end do
+!
+!     Write output for current frame (aenet)
+!
+            if (write_aenet) then
+                  if (i .lt. 10) then
+                     write(out_name,'(a,a,i1)') trim(basename),"_frame",i
+                  else if (i .lt. 100) then
+                     write(out_name,'(a,a,i2)') trim(basename),"_frame",i
+                  else if (i .lt. 1000) then
+                     write(out_name,'(a,a,i3)') trim(basename),"_frame",i
+                  else
+                     write(out_name,'(a,a,i4)') trim(basename),"_frame",i
+                  end if
+                  open(unit=30,file="xsf_files/" // trim(out_name) // ".xsf")
+                  write(30,'(a,f14.8,a)') "# total energy = ",energy," eV"
+                  write(30,*)
+                  write(30,'(a)') "CRYSTAL"
+                  write(30,'(a)') "PRIMVEC"
+                  do j=1,3
+                     write(30,'(3f14.8)') cell_vecs(j,:)
+                  end do
+                  write(30,'(a)') "PRIMCOORD"
+                  write(30,'(i6,i1)') natoms,1
+                  do j=1,natoms
+                     write(30,'(a,a,6f14.8)') at_names(j)," ",xyz(:,j),grad(:,j)
+                  end do
+                  close(30)
+!
+!     Write name of output file to list of filenames
+!
+                  write(45,'(a,a,a)') "./xsf_files/", trim(out_name),".xsf"
+            end if
+
+!
+!     Write output for current frame (MACE)
+!
+            if (write_mace) then
+                  write(48,*) natoms
+                  write(48,'(a,9f13.8,a,a,f20.10,a)') ' Lattice="',cell_vecs(1,:),cell_vecs(2,:),&
+                          & cell_vecs(3,:),'" Properties=species:S:1:pos:R:3:molID:I:1:REF_forces:R:3',&
+                          & ' Nmols=1 REF_energy=',energy,' pbc="T T T"'
+
+                  do j=1,natoms
+                     write(48,'(a,a,3f14.8,a,3f14.8)') at_names(j),"  ",xyz(:,j),"  0  ",grad(:,j)
+                  end do
+            end if
+         else
+            read(11,'(a)',iostat=readstat)
+         end if
+      end if
+   end do
+   close(11)
+   write(*,*) "... done!"
+   write(*,*) "Total number of AIMD frames in file: ",frame_act
+   write(*,*) "Number of frames converted to training set: ",frames_read
+   write(*,*)
+end if
+
 
 if (md_mode .eq. "setup") then
    write(*,*)

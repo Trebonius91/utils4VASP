@@ -34,6 +34,7 @@ character(len=1),allocatable::selective(:,:)
 logical::struc_select
 integer::at_numbers(10)
 real(kind=8)::fdum
+character(len=50)::adum
 character(len=2),allocatable::at_names(:)
 character(len=150),allocatable::xdat_content(:)
 integer::readstat
@@ -803,6 +804,13 @@ if (eval_aimd) then
                   do j=1,natoms
                      read(11,*) xyz(:,j),grad(:,j)
                   end do
+!
+!     Read the energy after the force section
+!
+                  do j=1,12
+                     read(11,*)
+                  end do
+                  read(11,*) adum,adum,adum,adum,adum,adum,energy
                   exit
                end if
             end do

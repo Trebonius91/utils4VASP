@@ -267,6 +267,7 @@ if build_job:
       line_split = line.rstrip().split()
 
       elem_num=[]
+      coord_select=[]
       natoms1=0
       names=[]
       for i in range(nelem):
@@ -349,6 +350,7 @@ if build_job:
       line_split = line.rstrip().split()
 
       elem_num=[]
+      coord_select=[]
       natoms2=0
       names=[]
       for i in range(nelem):
@@ -390,7 +392,6 @@ if build_job:
    # Build the initial frames of the NEB by interpolating the end points
 
    xyz_new = np.zeros((natoms1,3))
-
    for frame in range(0,nframes+2):
       if frame < 10: 
          newpath="0"+str(frame)
@@ -444,7 +445,8 @@ if build_job:
                print("{:20.11f}".format(xyz_new[i][0]) + " " + "{:20.11f}".format(xyz_new[i][1]) + " " +
                     "{:20.11f}".format(xyz_new[i][2])) 
             os.chdir("..")
-            sys.stdout=original_stdout
+      sys.stdout=original_stdout
+      os.chdir("..")
    print(" Generation of NEB input finished!")
 
 ################################################################

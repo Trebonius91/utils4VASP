@@ -14,6 +14,7 @@
 #
 
 VASP_PATH="/home/hpc/b146dc/b146dc10/programs/vasp6.4.1/vasp.6.4.1/bin/vasp_std"
+VASP_MODULES="module load intel/2021.4.0 mkl/2021.4.0 intelmpi/2021.6.0 hdf5/1.10.7-impi-intel"
 echo ""
 echo "This script prepares the efficient calculation of many
    single points, after executing vasp2trainset -md_traj=eval.
@@ -98,12 +99,13 @@ for ((i=1; i<=chunks-1; i++)); do
 #SBATCH --time=24:00:00
 #SBATCH --job-name=singlepoint_part$i
 #SBATCH --export=NONE
-module load intel mkl intelmpi hdf5
+
+$VASP_MODULES
 VASP=$VASP_PATH
 
 for ((i=1; i<=$jobnum; i++)); do
    cd frame\$(( $folder_first + i ))
-   # mpirun -np 72 \$VASP > vasp.out 2> vasp.err
+   mpirun -np 72 \$VASP > vasp.out 2> vasp.err
    pwd
    cd ..
 done
@@ -125,7 +127,8 @@ folder_first=$(( (chunks - 1) * jobnum ))
 #SBATCH --time=24:00:00
 #SBATCH --job-name=singlepoint_part$chunks
 #SBATCH --export=NONE
-module load intel mkl intelmpi hdf5
+
+$VASP_MODULES
 VASP=$VASP_PATH
 
 for ((i=1; i<=$remainder; i++)); do

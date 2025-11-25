@@ -60,5 +60,6 @@ install:
 	cp ML-FF/mlff_select $(BINDIR)
 	cp ML-FF/vasp2trainset $(BINDIR)
 	cp ML-FF/mlip_quality $(BINDIR)
+	cp management/prepare_slurm.sh $(BINDIR)
 
 .PHONY: all clean install

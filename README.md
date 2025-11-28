@@ -16,6 +16,8 @@ manage and evaluate VASP calcuations, both periodic DFT and ML-FF.
 
 A description of all scripts/programs as well as an overview of important VASP calculations and how to do them is given in the [utils4VASP-Wiki](https://github.com/Trebonius91/utils4VASP/wiki)!
 
+If you use utils4VASP for your research, we would be happy if you could cite the [utils4VASP paper](https://pubs.acs.org/doi/full/10.1021/acs.jctc.5c01491).
+
 The scripts and programs are grouped by the area of application (setup, evaluation, ML-FF, management) and stored into subdirectories of those names in the utils4VASP directory.
 Fortran programs have no file ending, ".py" are Python scripts, ".sh" are Bash shell scripts
 

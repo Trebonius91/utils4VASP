@@ -8,7 +8,6 @@
 #
 # Author: Maximilian Bechtel, 2025 <maxi.bechtel@fau.de>
 #
-
 import os
 import sys
 import time

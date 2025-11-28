@@ -808,7 +808,7 @@ if (remove_transrot) then
          com_act=com_act+xyz2(:,j,i)*at_masses(j)
       end do
       com_act=com_act/totmass    
-      write(*,*) "com",com_act
+!      write(*,*) "com",com_act
 !      do j=1,natoms
 !         do k=1,3
 !            xyz2(k,j,i)=xyz2(k,j,i)-com_act(k)+0.5d0
@@ -818,7 +818,7 @@ if (remove_transrot) then
 !
 !    Rotate the current frame to the standard moments of inertia
 !
-      vel_act=0
+!      vel_act=0
       if (i .gt. frame_first) then
          do j=1,natoms
             vel_act(:,j)=xyz2(:,j,i)-xyz2(:,j,i-1)
@@ -834,81 +834,81 @@ if (remove_transrot) then
             end do
          end do
          vtot=vtot/totmass
-         write(*,*) "vtot",vtot
+!         write(*,*) "vtot",vtot
 !
 !     Compute angular momentum for overall system
 !
-         mang = 0.0d0
-         xtot=com_act(1)
-         ytot=com_act(2)
-         ztot=com_act(3)
+!         mang = 0.0d0
+!         xtot=com_act(1)
+!         ytot=com_act(2)
+!         ztot=com_act(3)
 
-         do j = 1, natoms
-            weigh = at_masses(j)
-            mang(1) = mang(1) + (xyz2(2,j,i)*vel_act(3,j)-xyz2(3,j,i)*vel_act(2,j))*weigh
-            mang(2) = mang(2) + (xyz2(3,j,i)*vel_act(1,j)-xyz2(1,j,i)*vel_act(3,j))*weigh
-            mang(3) = mang(3) + (xyz2(1,j,i)*vel_act(2,j)-xyz2(2,j,i)*vel_act(1,j))*weigh
-         end do
+!         do j = 1, natoms
+!            weigh = at_masses(j)
+!            mang(1) = mang(1) + (xyz2(2,j,i)*vel_act(3,j)-xyz2(3,j,i)*vel_act(2,j))*weigh
+!            mang(2) = mang(2) + (xyz2(3,j,i)*vel_act(1,j)-xyz2(1,j,i)*vel_act(3,j))*weigh
+!            mang(3) = mang(3) + (xyz2(1,j,i)*vel_act(2,j)-xyz2(2,j,i)*vel_act(1,j))*weigh
+!         end do
 
-         mang(1) = mang(1) - (ytot*vtot(3)-ztot*vtot(2))*totmass
-         mang(2) = mang(2) - (ztot*vtot(1)-xtot*vtot(3))*totmass
-         mang(3) = mang(3) - (xtot*vtot(2)-ytot*vtot(1))*totmass
-         write(*,*) "mang",mang
+!         mang(1) = mang(1) - (ytot*vtot(3)-ztot*vtot(2))*totmass
+!         mang(2) = mang(2) - (ztot*vtot(1)-xtot*vtot(3))*totmass
+!         mang(3) = mang(3) - (xtot*vtot(2)-ytot*vtot(1))*totmass
+!         write(*,*) "mang",mang
 !
 !     calculate the moment of inertia tensor
 !
-         xx = 0.0d0
-         xy = 0.0d0
-         xz = 0.0d0
-         yy = 0.0d0
-         yz = 0.0d0
-         zz = 0.0d0
+!         xx = 0.0d0
+!         xy = 0.0d0
+!         xz = 0.0d0
+!         yy = 0.0d0
+!         yz = 0.0d0
+!         zz = 0.0d0
 
-         do j = 1, natoms
-            weigh = at_masses(j)
-            xdel = xyz2(1,j,i) - xtot
-            ydel = xyz2(2,j,i) - ytot
-            zdel = xyz2(3,j,i) - ztot
-            xx = xx + xdel*xdel*weigh
-            xy = xy + xdel*ydel*weigh
-            xz = xz + xdel*zdel*weigh
-            yy = yy + ydel*ydel*weigh
-            yz = yz + ydel*zdel*weigh
-            zz = zz + zdel*zdel*weigh
-         end do
-         tensor(1,1) = yy + zz
-         tensor(2,1) = -xy
-         tensor(3,1) = -xz
-         tensor(1,2) = -xy
-         tensor(2,2) = xx + zz
-         tensor(3,2) = -yz
-         tensor(1,3) = -xz
-         tensor(2,3) = -yz
-         tensor(3,3) = xx + yy
+!         do j = 1, natoms
+!            weigh = at_masses(j)
+!            xdel = xyz2(1,j,i) - xtot
+!            ydel = xyz2(2,j,i) - ytot
+!            zdel = xyz2(3,j,i) - ztot
+!            xx = xx + xdel*xdel*weigh
+!            xy = xy + xdel*ydel*weigh
+!            xz = xz + xdel*zdel*weigh
+!            yy = yy + ydel*ydel*weigh
+!            yz = yz + ydel*zdel*weigh
+!            zz = zz + zdel*zdel*weigh
+!         end do
+!         tensor(1,1) = yy + zz
+!         tensor(2,1) = -xy
+!         tensor(3,1) = -xz
+!         tensor(1,2) = -xy
+!         tensor(2,2) = xx + zz
+!         tensor(3,2) = -yz
+!         tensor(1,3) = -xz
+!         tensor(2,3) = -yz
+!         tensor(3,3) = xx + yy
 !
 !     avoid bad behavior (singularity) for diatomic systems
 !
 
-         if (natoms .le. 2) then
-            eps = 0.000001d0
-            tensor(1,1) = tensor(1,1) + eps
-            tensor(2,2) = tensor(2,2) + eps
-            tensor(3,3) = tensor(3,3) + eps
-         end if
+!         if (natoms .le. 2) then
+!            eps = 0.000001d0
+!            tensor(1,1) = tensor(1,1) + eps
+!            tensor(2,2) = tensor(2,2) + eps
+!            tensor(3,3) = tensor(3,3) + eps
+!         end if
 ! 
 !     invert the moment of inertia tensor
 !
-         call invert (3,tensor)
+!         call invert (3,tensor)
 !
 !     compute angular velocity 
 !
-         do k = 1, 3
-            vang(k) = 0.0d0
-            do l = 1, 3
-               vang(k) = vang(k) + tensor(k,l)*mang(l)
-            end do
-        end do
-
+!         do k = 1, 3
+!            vang(k) = 0.0d0
+!            do l = 1, 3
+!               vang(k) = vang(k) + tensor(k,l)*mang(l)
+!            end do
+!        end do
+!
 
 !
 !     eliminate any translation of the overall system
@@ -921,14 +921,14 @@ if (remove_transrot) then
 !
 !     eliminate any rotation of the overall system
 !
-         do j = 1, natoms
-            xdel = xyz2(1,j,i) - xtot
-            ydel = xyz2(2,j,i) - ytot
-            zdel = xyz2(3,j,i) - ztot
-            vel_act(1,j) = vel_act(1,j) - vang(2)*zdel + vang(3)*ydel
-            vel_act(2,j) = vel_act(2,j) - vang(3)*xdel + vang(1)*zdel
-            vel_act(3,j) = vel_act(3,j) - vang(1)*ydel + vang(2)*xdel
-         end do
+!         do j = 1, natoms
+!            xdel = xyz2(1,j,i) - xtot
+!            ydel = xyz2(2,j,i) - ytot
+!            zdel = xyz2(3,j,i) - ztot
+!            vel_act(1,j) = vel_act(1,j) - vang(2)*zdel + vang(3)*ydel
+!            vel_act(2,j) = vel_act(2,j) - vang(3)*xdel + vang(1)*zdel
+!            vel_act(3,j) = vel_act(3,j) - vang(1)*ydel + vang(2)*xdel
+!         end do
 !
 !     Now correct the xyz structure from the velocity: 
 !     Subtract the old velocity (difference to previous frame) 

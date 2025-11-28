@@ -70,10 +70,29 @@ echo " Number of frame folders: $folder_num"
 #    Copy input files to all folders
 #
 echo " Copy VASP input files to folders ..."
-for ((i=0; i<=folder_num; i++)); do
+for ((i=1; i<=folder_num; i++)); do
    cp POTCAR frame$i
    cp KPOINTS frame$i
    cp INCAR frame$i
+   touch frame$i/slurm_script
+#
+#    Copy a single job slurm_script file to each folder, in case one 
+#      of the job failed
+#
+    echo "#! /bin/bash -l
+#
+#SBATCH --nodes=1
+#SBATCH --ntasks=72
+#SBATCH --partition=singlenode
+#SBATCH --time=24:00:00
+#SBATCH --job-name=singlepoint$i
+#SBATCH --export=NONE
+
+$VASP_MODULES
+VASP=$VASP_PATH
+
+mpirun -np 72 \$VASP > vasp.out 2> vasp.err
+" > frame$i/slurm_script
 done
 echo " ... done!"
 
@@ -153,4 +172,6 @@ done
 
 echo " prepare_slurm.sh finished! Execute the start_slurm.script to"
 echo "  start all slurm_scripts"
+echo " If single calculations fail, they can still be restarted with"
+echo "  single-job slurm_scripts in the respective folders."
 echo " "

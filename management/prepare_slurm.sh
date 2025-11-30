@@ -23,7 +23,10 @@ echo "This script prepares the efficient calculation of many
    start a fraction of the jobs serially, such that the number
    of single jobs in the queue stays manageable. 
 
-   Usage: prepare_slurm.sh [number of jobs per slurm_script]"
+   Usage: prepare_slurm.sh [number of jobs per slurm_script]
+   or: prepare_slurm.sh -check to check if ran successful.
+   or: prepare_slurm.sh -restart to restart all broken ones.
+"
 #
 #    Check if all input files are present
 #
@@ -45,41 +48,93 @@ fi
 #
 #    Obtain the number of jobs per slurm_script
 #
+check=0
 if [ -n "$1" ]; then
-   jobnum=$1
+   if [[ $1 =~ ^-?[0-9]+$ ]]; then
+      jobnum=$1
+   elif [ $1 == "-check" ]; then 
+      check=1
+      echo " Calculations will be checked!"
+   elif [ $1 == "-restart" ]; then 
+      check=2
+      echo " Broken calculations will be restarted!"
+   else
+      echo " Please give a number or the -check/-restart command!"
+   fi
 else
-   echo " Please give the number of jobs as command line argument!"
+   echo " Please give the number of jobs or -check/-restart as command line argument!"
    exit
 fi
 
 #
-#    Count number of single point folders in current folder
+#    Check if all calculations were successful, state if otherwise
 #
-while true; do
-    folder="frame$((folder_num + 1))"
-    if [ -d "$folder" ]; then
-        folder_num=$((folder_num + 1))
-    else
-        break
-    fi
-done
+if [ $check == 1 ]; then
+   while true; do
+      folder="frame$((folder_num + 1))"
+      if [ -d "$folder" ]; then
+         folder_num=$((folder_num + 1))
+      else
+         break
+      fi
+   done
+   echo " Number of frame folders: $folder_num"
+   for ((i=1; i<=folder_num; i++)); do
+      lastline=$(tail -n 1 frame$i/OUTCAR)
+      if [[ "$lastline" != *"Voluntary context switches:"* ]]; then
+         echo "Calculation failed in folder $i!"
+      fi
+   done
+#
+#    Check if calculations were successful and restart broken ones!
+#
+elif [ $check == 2 ]; then
+   while true; do
+      folder="frame$((folder_num + 1))"
+      if [ -d "$folder" ]; then
+         folder_num=$((folder_num + 1))
+      else
+         break
+      fi
+   done
+   echo " Number of frame folders: $folder_num"
+   for ((i=1; i<=folder_num; i++)); do
+      lastline=$(tail -n 1 frame$i/OUTCAR)
+      if [[ "$lastline" != *"Voluntary context switches:"* ]]; then
+         echo "Calculation failed in folder $i! Will be restarted..."
+         cd frame$i
+         sleep 0.5
+         sbatch slurm_script
+         cd ..
+      fi
+   done
 
-echo " Number of frame folders: $folder_num"
+else
+   while true; do
+      folder="frame$((folder_num + 1))"
+      if [ -d "$folder" ]; then
+         folder_num=$((folder_num + 1))
+      else
+         break
+      fi
+   done
+
+   echo " Number of frame folders: $folder_num"
 
 #
 #    Copy input files to all folders
 #
-echo " Copy VASP input files to folders ..."
-for ((i=1; i<=folder_num; i++)); do
-   cp POTCAR frame$i
-   cp KPOINTS frame$i
-   cp INCAR frame$i
-   touch frame$i/slurm_script
+   echo " Copy VASP input files to folders ..."
+   for ((i=1; i<=folder_num; i++)); do
+      cp POTCAR frame$i
+      cp KPOINTS frame$i
+      cp INCAR frame$i
+      touch frame$i/slurm_script
 #
 #    Copy a single job slurm_script file to each folder, in case one 
 #      of the job failed
 #
-    echo "#! /bin/bash -l
+       echo "#! /bin/bash -l
 #
 #SBATCH --nodes=1
 #SBATCH --ntasks=72
@@ -93,24 +148,24 @@ VASP=$VASP_PATH
 
 mpirun -np 72 \$VASP > vasp.out 2> vasp.err
 " > frame$i/slurm_script
-done
-echo " ... done!"
+   done
+   echo " ... done!"
 
 #
 #    Calculate number of chunks
 #
-chunks=$(( (folder_num + jobnum - 1) / jobnum ))
+   chunks=$(( (folder_num + jobnum - 1) / jobnum ))
 
-echo " Number of chunks: $chunks"
-echo " Number of folders per chunk: $jobnum"
+   echo " Number of chunks: $chunks"
+   echo " Number of folders per chunk: $jobnum"
 
 #
 #     Now generate slurm_scripts for each chunk, in which it is looped through
 #     the folders it manages
 #
-for ((i=1; i<=chunks-1; i++)); do
-    folder_first=$(( (i - 1) * jobnum ))
-    echo "#! /bin/bash -l
+   for ((i=1; i<=chunks-1; i++)); do
+      folder_first=$(( (i - 1) * jobnum ))
+      echo "#! /bin/bash -l
 #
 #SBATCH --nodes=1
 #SBATCH --ntasks=72
@@ -129,15 +184,15 @@ for ((i=1; i<=$jobnum; i++)); do
    cd ..
 done
 " > slurm_script$i
-done
+   done
 
 #
 #    Slurm script for the remaining jobs, if modulo not zero
 #
-remainder=$(( folder_num - (chunks - 1) * jobnum  ))
-echo " Number of folders in remaining chunk: $remainder"
+   remainder=$(( folder_num - (chunks - 1) * jobnum  ))
+   echo " Number of folders in remaining chunk: $remainder"
 
-folder_first=$(( (chunks - 1) * jobnum ))
+   folder_first=$(( (chunks - 1) * jobnum ))
     echo "#! /bin/bash -l
 #
 #SBATCH --nodes=1
@@ -162,7 +217,7 @@ done
 #
 #    Generate a driver script to call all slurm_scripts
 #
-echo "#!/bin/sh
+   echo "#!/bin/sh
 #
 for ((i=1; i<=$chunks; i++)); do
    sbatch slurm_script\$i
@@ -170,8 +225,9 @@ for ((i=1; i<=$chunks; i++)); do
 done
 " > start_slurm.sh
 
-echo " prepare_slurm.sh finished! Execute the start_slurm.script to"
-echo "  start all slurm_scripts"
-echo " If single calculations fail, they can still be restarted with"
-echo "  single-job slurm_scripts in the respective folders."
-echo " "
+   echo " prepare_slurm.sh finished! Execute the start_slurm.script to"
+   echo "  start all slurm_scripts"
+   echo " If single calculations fail, they can still be restarted with"
+   echo "  single-job slurm_scripts in the respective folders."
+   echo " "
+fi

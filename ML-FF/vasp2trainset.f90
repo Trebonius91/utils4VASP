@@ -1087,7 +1087,7 @@ if (md_mode .eq. "eval") then
 !
 !    Now, read in the OUTCAR files of all frames 
 !
-   do i=1,nframes
+   loop_frames: do i=1,nframes
       if (i .lt. 10) then
          write(foldername,'(a,i1)') "frame",i
       else if (i .lt. 100) then
@@ -1101,7 +1101,9 @@ if (md_mode .eq. "eval") then
       open(unit=78,file="OUTCAR",status="old",iostat=readstat)
       if (readstat .ne. 0) then
          write(*,*) "The OUTCAR file for frame ",i," could not been found!"
-         stop
+         write(*,*) "The frame will be skipped in the training set."
+         call chdir("..")
+         cycle loop_frames
       end if
       natoms=0
       el_nums=0
@@ -1197,7 +1199,9 @@ if (md_mode .eq. "eval") then
       end do
       if (natoms .lt. 1) then
          write(*,*) "Something seems to be wrong with the OUTCAR file of frame ",i
-         stop
+         write(*,*) "The frame will be skipped in the training set."
+         call chdir("..")
+         cycle loop_frames
       end if        
       close(78)
 
@@ -1261,7 +1265,7 @@ if (md_mode .eq. "eval") then
             write(*,*) "Frame ",i," is skipped in the output due to large force components."
          end if
       end if
-   end do
+   end do loop_frames
    write(*,*) "... completed!"
 
 

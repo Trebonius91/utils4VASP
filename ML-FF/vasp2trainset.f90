@@ -698,7 +698,7 @@ if (eval_mlff) then
 !
          if (write_mace) then
             write(48,*) natoms
-            write(48,'(a,9f13.8,a,a,f13.8,a)') 'Lattice="',cell_vecs(1,:),cell_vecs(2,:),&
+            write(48,'(a,9f13.8,a,a,f15.8,a)') 'Lattice="',cell_vecs(1,:),cell_vecs(2,:),&
                  & cell_vecs(3,:),'" Properties=species:S:1:pos:R:3:molID:I:1:REF_forces:R:3',&
                  & ' Nmols=1 REF_energy=',energy,' pbc="T T T"'
             do j=1,natoms

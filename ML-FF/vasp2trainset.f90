@@ -1158,7 +1158,15 @@ if (md_mode .eq. "eval") then
        !     stress(3,2)=stress(2,3)
        !     stress(3,1)=stress(1,3)
        !  end if
-
+!
+!     Directly abort if an error has been writen by the VASP calculation
+!
+         if (index(a160,"Error") .ne. 0) then
+            write(*,*) "The VASP calculation gave an error in frame ",i
+            write(*,*) "The frame will be skipped in the training set."
+            call chdir("..")
+            cycle loop_frames
+         end if
 
          if (index(a160,"POSITION") .ne. 0) then
             read(78,*)
@@ -1263,6 +1271,10 @@ if (md_mode .eq. "eval") then
             write(48,'(a,9f13.8,a,a,f20.10,a)') ' Lattice="',cell_vecs(1,:),cell_vecs(2,:),&
                     & cell_vecs(3,:),'" Properties=species:S:1:pos:R:3:molID:I:1:REF_forces:R:3',&
                     & ' Nmols=1 REF_energy=',energy,' pbc="T T T"'
+
+            if (xyz(3,65) .lt. 0.001) then
+               write(*,*) xyz(3,j),j,i
+            end if
 
             do j=1,natoms
                write(48,'(a,a,3f14.8,a,3f14.8)') at_names(j),"  ",xyz(:,j),"  0  ",grad(:,j)

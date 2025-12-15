@@ -1164,7 +1164,13 @@ if (md_mode .eq. "eval") then
             read(78,*)
 
             do j=1,natoms
-               read(78,*) xyz(:,j),grad(:,j)
+               read(78,*,iostat=readstat) xyz(:,j),grad(:,j)
+               if (readstat .ne. 0) then
+                  write(*,*) "Something seems to be wrong with the OUTCAR file of frame ",i
+                  write(*,*) "The frame will be skipped in the training set."
+                  call chdir("..")
+                  cycle loop_frames
+               end if
                if ((grad(1,j) .gt. 50.0) .or. (grad(2,j) .gt. 50.0) .or. &
                         & (grad(3,j) .gt. 50.0)) then
                   write(*,*) "WARNING! A force component of atom ",j," in structure ",i," is huge!"

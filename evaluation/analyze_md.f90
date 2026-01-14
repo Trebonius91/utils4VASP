@@ -267,10 +267,7 @@ read(cdum,*,iostat=readstat) el_names_read
 nelems=0
 do i=1,10
    if (el_names_read(i) .eq. "XX") exit
-      nelems=nelems+1
-   if (el_names_read(i) .eq. cls_element) then
-      cls_elem_ind=nelems
-   end if        
+   nelems=nelems+1
 end do
 
 allocate(el_names(nelems),el_nums(nelems))
@@ -1131,6 +1128,12 @@ do i = 1, command_argument_count()
       read(arg(14:),*) cls_element
    end if
 end do
+do i=1,nelems
+   if (el_names(i) .eq. cls_element) then
+      cls_elem_ind=i
+   end if
+end do
+
 !
 !    The number of individual core level shift evaluations
 !

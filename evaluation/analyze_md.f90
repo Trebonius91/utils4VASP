@@ -260,12 +260,12 @@ box_volume=xlen*ylen*zlen
 !    Read in the elements (so far, only two different allowed)
 !
 natoms=0
-allocate(el_names_read(10))
+allocate(el_names_read(50))
 el_names_read="XX"
 read(14,'(a)') cdum
 read(cdum,*,iostat=readstat) el_names_read
 nelems=0
-do i=1,10
+do i=1,50
    if (el_names_read(i) .eq. "XX") exit
    nelems=nelems+1
 end do
@@ -281,7 +281,6 @@ close(14)
 !     Number of atoms in the slab
 !
 natoms = sum(el_nums)
-
 !
 !    Read in the command line arguments and define the evaluation settings
 !

@@ -89,7 +89,7 @@ real(kind=8)::act_num(3)
 character(len=120)::a120
 character(len=220)::a220
 character(len=1)::atest
-character(len=150)::arg,cdum
+character(len=500)::arg,cdum
 logical::ana_present ! if the current analysis folder exists
 real(kind=8),allocatable::xlens(:),ylens(:),zlens(:) ! NpT unit cell sizes
 real(kind=8),allocatable::xlens_p(:),ylens_p(:),zlens_p(:) ! ... for call of subroutines

@@ -109,7 +109,6 @@ write(*,*) " -neb : evaluates a NEB calculation."
 write(*,*) " -ml_ff : evaluates a ML-FF learning calculation."
 write(*,*) " -aimd : evaluates a VASP AIMD calculation (OUTCAR file)"
 write(*,*) " -outcar_name=[name] : Name of the OUTCAR file (default: OUTCAR)"
-write(*,*) " -read_freq : Only each Nth AIMD frame will be converted to training set."
 write(*,*) " -md_traj=[mode] : picks frames from a VASP trajectory (XDATCAR)"
 write(*,*) " Ensemble (NVT or NpT) of the trajectory is detected automatically."
 write(*,*) "   If mode = setup, a folder with a POSCAR file will be generated for each"
@@ -118,7 +117,8 @@ write(*,*) "   of the folders (IBRION=-1,NSW=0)."
 write(*,*) "   If mode = eval, the folders with the VASP calculations will be evaluated"
 write(*,*) "   and the training set file(s) will be written with the energy/gradients."  
 write(*,*) " -traj_freq=[number] : For the md_traj (mode setup), only each Nth trajectory"
-write(*,*) "   frame will be written to file for VASP calculation."
+write(*,*) "   frame will be written to file for VASP calculation. For AIMD, only each"
+write(*,*) "   Nth frame will be converted to the training set file."
 write(*,*) " -name=[speficier] : give a unique string to specify the current calculation"
 write(*,*) " -aenet : The output will be for the aenet program (atomisticnet)"
 write(*,*) " -mace : The output will be for the MACE program (fit foundation model)"
@@ -173,13 +173,13 @@ end do
 !     The frequency in which the AIMD frames will be written 
 !     to the training set file
 !
-read_freq=1
-do i = 1, command_argument_count()
-   call get_command_argument(i, arg)
-   if (trim(arg(1:11))  .eq. "-read_freq=") then
-      read(arg(12:),*) read_freq
-   end if
-end do
+!read_freq=1
+!do i = 1, command_argument_count()
+!   call get_command_argument(i, arg)
+!   if (trim(arg(1:11))  .eq. "-read_freq=") then
+!      read(arg(12:),*) read_freq
+!   end if
+!end do
 
 !
 !     The name of the OUTCAR file, if not the default (OUTCAR)
@@ -207,12 +207,15 @@ end do
 !
 !     The frequency in which the MD frames will be written 
 !     out to VASP single point calculation input folders
+!     Both for md_traj and AIMD mode
 !
 traj_freq=1
+read_freq=1
 do i = 1, command_argument_count()
    call get_command_argument(i, arg)
    if (trim(arg(1:11))  .eq. "-traj_freq=") then
       read(arg(12:),*) traj_freq
+      read_freq=traj_freq
    end if
 end do
 

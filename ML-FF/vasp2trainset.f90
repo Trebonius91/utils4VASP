@@ -1300,10 +1300,6 @@ if (md_mode .eq. "eval") then
                     & cell_vecs(3,:),'" Properties=species:S:1:pos:R:3:molID:I:1:REF_forces:R:3',&
                     & ' Nmols=1 REF_energy=',energy,' pbc="T T T"'
 
-            if (xyz(3,65) .lt. 0.001) then
-               write(*,*) xyz(3,j),j,i
-            end if
-
             do j=1,natoms
                write(48,'(a,a,3f14.8,a,3f14.8)') at_names(j),"  ",xyz(:,j),"  0  ",grad(:,j)
             end do

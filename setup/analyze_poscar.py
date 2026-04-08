@@ -91,6 +91,8 @@ print('''
      system (NELECT keyword), by assuming that all elements are modeled
      by their standard PAW PBE potentials.
   -density : Calculates the density of the POSCAR file (g/cm^3)
+  -extent=[list] : The maximum extension of atoms of one or several 
+     elements along coordinate axes. Example: extent=Pt,O
   -atoms=a,b,c : Selects a list of atoms to be used for an evaluation
      option, for example to define a plane for angle measurement.
      Example: atoms=3,6,17,18,35
@@ -109,6 +111,7 @@ dens_job=False
 kpoints_job=False
 potcar_job=False
 elec_job=False
+extent_job=False
 k_dens=0.04
 pot_path="~/"  # The default POTCAR path, change if needed!
 vac_min=7.0
@@ -128,6 +131,9 @@ for arg in sys.argv:
       if param == "-atoms":
          atom_list=actval.split(",")
          atoms_defined=True
+      if param == "-extent":
+         elem_ext=actval.split(",")
+         extent_job=True
       if param == "-plane_angle":
          coord_plane=actval
          angle_job=True
@@ -146,6 +152,8 @@ elif potcar_job:
    print(" A POTCAR file for the POSCAR file will be written.")
 elif elec_job: 
    print(" The total number of valence electrons will be calculated.")
+elif extent_job: 
+   print(" The extent of atoms of chosen elements will be calculated.")
 else:
    print(" Please give a valid job!\n")
    sys.exit(1)
@@ -449,6 +457,51 @@ if dens_job:
 
    density=mass_tot/volume*1.66053906660
    print(density)
+
+#
+#  Calculate the extension of atoms of chosen elements along the 
+#   coordinate axes
+#
+if extent_job:
+   nelems_ext=len(elem_ext)
+   if nelems_ext < 1:
+      print(" Please give a list of elements!")
+      sys.exit(1)
+   x_min=100000.0
+   x_max=-100000.0
+   y_min=100000.0
+   y_max=-100000.0
+   z_min=100000.0
+   z_max=-100000.0
+   if not cartesian:
+      xyz_frac=xyz
+      xyz=trans_frac2cart(xyz_frac,natoms,a_vec,b_vec,c_vec)
+   count=0
+   for i in range(natoms):
+      for j in range(nelems_ext):
+         if names[i] == elem_ext[j]:  
+            count=count+1     
+            if xyz[i][0] <= x_min:
+               x_min=xyz[i][0]
+            if xyz[i][0] >= x_max: 
+               x_max=xyz[i][0]
+            if xyz[i][1] <= y_min:
+               y_min=xyz[i][1]
+            if xyz[i][1] >= y_max:
+               y_max=xyz[i][1]
+            if xyz[i][2] <= z_min:
+               z_min=xyz[i][2]
+            if xyz[i][2] >= z_max:
+               z_max=xyz[i][2]
+   if count == 0:
+      print(" Please give elements that are in the system!")
+      sys.exit(1)
+
+   print(" Maximum extensions of ", elem_ext," atoms:")
+   print("  x: ", x_min," to ",x_max," (",x_max-x_min,")")
+   print("  y: ", y_min," to ",y_max," (",y_max-y_min,")")
+   print("  z: ", z_min," to ",z_max," (",z_max-z_min,")") 
+
 
 #  Obtain the other set of structures, respectively (fractional if 
 #   cartesian is given, cartesian if fractional is given)

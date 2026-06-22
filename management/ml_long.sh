@@ -221,6 +221,7 @@ rm vasp.err
 ########### MAIN LOOP (NUMBER OF RESTARTS) ############
 
 
+check_round=0
 for ((i=1; i<=$restarts;i++))
 do
 
@@ -429,7 +430,6 @@ do
       job_status=$(squeue | grep $jobnum | awk '{print $5}') #get status
       job_runtime=$(squeue | grep $jobnum | awk '{print $6}') #get runtime
       
-      
       if [ $jobnum -eq $job_number ] #check if jobnum is found
       then
          if [ "$job_status" == "R" ] #check if running
@@ -441,38 +441,49 @@ do
          else
             if [ -z "$jobnum" ]
             then 
-               echo "Variable $jobnum is empty! The job will be restarted..." >> ml_long.log
-               cp vasp.err vasp.err$i.$minute_act
-               cp vasp.out vasp.out$i.$minute_act
-               rm vasprum.xml
-               rm OUTCAR
-               rm vasp.err
-               rm vasp.out
-               sleep $sleept
-               sbatch slurm_script > submit.txt
-               jobnum=$( awk '{print $4}' submit.txt)
-               echo "Job number $jobnum started." >> ml_long.log
+               check_round=$(($check_round + 1))
+               echo "Empty $jobnum, check round $check_round of 5." >> ml_long.log
+               if [ $check_round -eq 5 ]
+               then
+                  echo "Variable $jobnum is empty! The job will be restarted..." >> ml_long.log
+                  cp vasp.err vasp.err$i.$minute_act
+                  cp vasp.out vasp.out$i.$minute_act
+                  rm vasprum.xml
+                  rm OUTCAR
+                  rm vasp.err
+                  rm vasp.out
+                  sleep $sleept
+                  sbatch slurm_script > submit.txt
+                  jobnum=$( awk '{print $4}' submit.txt)
+                  echo "Job number $jobnum started." >> ml_long.log
+                  check_round=0
+               fi
             else     
                echo "Job $jobnum is getting cancled (or other weird status): Status $job_status" >> ml_long.log
             fi
          fi
       else
          echo "Job $jobnum not found" >> ml_long.log
+         check_round=$(($check_round + 1))
+         echo "Empty $jobnum, check round $check_round of 5." >> ml_long.log        
+         if [ $check_round -eq 5 ]
+         then
+      	    #Restart with current input
+            echo "Restarted due to unknown abortion!" >> ml_long.log
 
-	 #Restart with current input
-         echo "Restarted due to unknown abortion!" >> ml_long.log
+     	    cp vasp.err vasp.err$i.$minute_act
+	    cp vasp.out vasp.out$i.$minute_act
+            rm vasprum.xml
+            rm OUTCAR
+            rm vasp.err
+            rm vasp.out
+            sleep $sleept
+            sbatch slurm_script > submit.txt
+            jobnum=$( awk '{print $4}' submit.txt)
 
-	 cp vasp.err vasp.err$i.$minute_act
-	 cp vasp.out vasp.out$i.$minute_act
-         rm vasprum.xml
-         rm OUTCAR
-         rm vasp.err
-         rm vasp.out
-         sleep $sleept
-         sbatch slurm_script > submit.txt
-         jobnum=$( awk '{print $4}' submit.txt)
-
-	 echo "Job number $jobnum started." >> ml_long.log
+  	    echo "Job number $jobnum started." >> ml_long.log
+            check_round=0
+         fi
       fi
 
       

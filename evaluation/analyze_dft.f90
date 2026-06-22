@@ -37,7 +37,7 @@ implicit none
 integer::i
 character(len=120)::cdum,arg
 logical::switch_bader,switch_stm,switch_pdos,switch_cls
-logical::switch_ddec6
+logical::switch_ddec6,switch_band
 !
 !    only print the overview of utils4VASP scripts/programs and stop
 !
@@ -57,7 +57,7 @@ do i = 1, command_argument_count()
       write(*,*) "Evaluation:"
       write(*,*) " - modify_xdatcar: Modify trajectory files: multiply, shift, pick etc."
       write(*,*) " - analyze_md: Analyze MD trajectories for RDFs, diffusion, density etc."
-      write(*,*) " - analyze_dft: Analyze DFT calculations (Bader charges, STM, CLS, pDOS)"
+      write(*,*) " - analyze_dft: Analyze DFT calculations (charges, STM, CLS, pDOS, bands)"
       write(*,*) " - check_geoopt.py: Monitor geometry optimizations with selective dynamics"
       write(*,*) " - manage_neb.py: Setup, monitor and restart NEB calculations"
       write(*,*) "ML-FF:"
@@ -87,6 +87,7 @@ write(*,*) "The following command line arguments can be given:"
 write(*,*) "  -bader: Evaluates a Bader charge calculation "
 write(*,*) "  -ddec6: Evaluates a DDEC6 charge calculation "
 write(*,*) "  -pdos: partial density of states calculations are evaluated"
+write(*,*) "  -band: Evaluates and visualizes a band structure calculation."
 write(*,*) "  -stm: generates STM images from surface calculations."
 write(*,*) "  -cls: Set up and evaluate core level shift calculations for"
 write(*,*) "    several atoms in a structure."
@@ -138,6 +139,17 @@ do i = 1, command_argument_count()
 end do
 
 !
+!    If a band structure calculation shall be evaluated
+!
+switch_band = .false.
+do i = 1, command_argument_count()
+   call get_command_argument(i, arg)
+   if (trim(arg(1:5))  .eq. "-band") then
+      switch_band = .true.
+   end if
+end do
+
+!
 !    If a core level energy/shift calculation shall be evaluated
 !
 switch_cls = .false.
@@ -150,7 +162,7 @@ end do
 
 if ((.not. switch_bader) .and. (.not. switch_stm) .and. &
     & (.not. switch_pdos) .and. (.not. switch_cls) .and. &
-    & (.not. switch_ddec6)) then
+    & (.not. switch_ddec6) .and. (.not. switch_band)) then
    write(*,*)
    write(*,*) "Please give one of the calculation types!"
    write(*,*)
@@ -174,6 +186,10 @@ end if
 
 if (switch_pdos) then
    call calc_pdos
+end if
+
+if (switch_band) then
+   call calc_band
 end if
 
 if (switch_cls) then
@@ -801,6 +817,186 @@ end do
 
 
 end subroutine calc_ddec6
+
+!
+!    calc_band: evaluates the results of a band structure 
+!      calculation. The OUTCAR and KPOINTS files are read in and the 
+!      band structure is written to file band_structure.dat,
+!      a gnuplot script is evaluated as well
+!      In the header of the KPOINTS file, one arbitrary word 
+!      need to be followed by the definition of the band path,
+!      e.g., L-G-X-U|K-G, else, no x-labels are given
+!
+subroutine calc_band
+implicit none
+integer::i,j,k
+integer::readstat,ncols,idum
+character(len=150)::a150
+character(len=50)::adum,path_def
+character(len=5),allocatable::path_parts(:)
+character(len=100)::format
+integer::nkpoints,nbands,path_points,nparts,nlabels
+integer::start,pos
+real(kind=8),allocatable::path_parts_pos(:)
+real(kind=8),allocatable::band_ener(:),band_occ(:)
+real(kind=8)::coord_x,coord_y,coord_z
+real(kind=8)::e_fermi
+
+nkpoints=0
+nbands=0
+
+open(unit=38,file="band_structure.dat",status="replace")
+!
+!     Open and read in KPOINTS file
+!
+open(unit=36,file="KPOINTS",status="old",iostat=readstat)
+if (readstat .ne. 0) then
+   write(*,*) "The file 'KPOINTS' is not there!"
+   stop
+end if
+read(36,*) adum,path_def
+read(36,*) path_points
+close(36)
+write(*,*)
+!
+!     Open and check if OUTCAR is present
+!
+open(unit=34,file="OUTCAR",status="old",iostat=readstat)
+if (readstat .ne. 0) then
+   write(*,*) "The file 'OUTCAR' is not there!"
+   stop
+end if
+do
+!
+!     Read and write the header: how many k-points and bands
+!
+   read(34,'(a)',iostat=readstat) a150
+   if (readstat .ne. 0) exit
+   if (index(a150,'k-points           NKPTS =') .ne. 0 ) then 
+      read(a150,*) adum,adum,adum,nkpoints,adum,adum,adum,adum,adum,adum,adum,adum,adum,adum,nbands
+      write(*,*) "Number of k-points:",nkpoints
+      write(*,*) "Number of considered bands:",nbands
+      allocate(band_ener(nbands),band_occ(nbands))
+      write(38,*) "# Band structure written by analyze_md"
+      write(38,'(a)',advance="no") "# N(kpoint)  x-coord  y-coord  z-coord  "
+      do j=1,nbands-1
+         if (j .lt. 10) then
+            write(38,'(a,i1,a)',advance="no") "band",j,"  "
+         else if (j .lt. 100) then
+            write(38,'(a,i2,a)',advance="no") "band",j,"  "
+         else if (j .lt. 1000) then
+            write(38,'(a,i3,a)',advance="no") "band",j,"  "
+         else 
+            write(38,'(a,i4,a)',advance="no") "band",j,"  "
+         end if
+      end do
+      if (nbands .lt. 10) then
+         write(38,'(a,i1,a)') "band",nbands,"  "
+      else if (nbands .lt. 100) then
+         write(38,'(a,i2,a)') "band",nbands,"  "
+      else if (nbands .lt. 1000) then
+         write(38,'(a,i3,a)') "band",nbands,"  "
+      else
+         write(38,'(a,i4,a)') "band",nbands,"  "
+      end if
+      ncols=nbands*2+3
+      write(format,'("(i5,",i0,"f9.4)")') ncols
+   end if
+!
+!     Read in coordinates and properties of each k-point
+!
+   if (index(a150,'E-fermi :') .ne. 0 ) then
+      read(a150,*) adum,adum,e_fermi
+      read(34,'(a)',iostat=readstat)      
+      do i=1,nkpoints      
+         read(34,'(a)',iostat=readstat)
+         read(34,*,iostat=readstat) adum,adum,adum,coord_x,coord_y,coord_z
+         read(34,'(a)',iostat=readstat)
+         do j=1,nbands
+            read(34,*) idum,band_ener(j),band_occ(j)             
+         end do  
+         write(38,format) i,coord_x,coord_y,coord_z,band_ener(:)-e_fermi,band_occ(:)
+      end do
+   end if
+end do
+close(34)
+if (nkpoints .eq. 0) then
+   write(*,*) "No k-points found!"
+   stop
+end if
+
+nlabels = 1
+do i = 1, len_trim(path_def)
+   if (path_def(i:i) == '-') nlabels = nlabels + 1
+end do
+if (nlabels .eq. 0) then
+   write(*,*) "Please give the k-path in the first line of KPOINTS!"
+   stop
+end if
+write(*,*) "Sampled path: ",path_def
+allocate(path_parts(nlabels))
+allocate(path_parts_pos(nlabels))
+path_parts=""
+nparts=0
+start=1
+do
+   pos = index(path_def(start:), '-')
+
+   if (pos == 0) then
+      nparts = nparts + 1
+      path_parts(nparts) = adjustl(trim(path_def(start:)))
+      exit
+   else
+      nparts = nparts + 1
+      path_parts(nparts) = adjustl(trim(path_def(start:start+pos-2)))
+      start = start + pos
+   end if
+end do
+do i=1,nparts
+   if (len(trim(path_parts(i))) .gt. 1) then
+      path_parts_pos(i)=(i-1)*path_points+0.5
+   else
+      path_parts_pos(i)=(i-1)*path_points
+   end if
+end do
+path_parts_pos(1)=1.0
+
+!
+!     Write gnuplot file for plot 
+! 
+open(unit=45,file="plot_band.gnu",status="replace")
+write(45,*) "set terminal svg lw 1.5 size 450,400"
+write(45,*) "set output 'band_structure.svg'"
+write(45,*) "unset xlabel"
+write(45,*) "set ylabel 'E-E_F (eV)'"
+write(45,*) "unset key"
+write(45,*) "set grid"
+do i=1,nparts
+   write(45,*) "set arrow from ",path_parts_pos(i),", graph 0 to ",path_parts_pos(i),", graph 1 nohead lw 1 "
+end do
+
+write(45,'(a)',advance="no") "set xtics ("
+do i=1,nparts-1
+   write(45,'(a,a,a,f10.3,a)',advance="no") '"',trim(path_parts(i)),'" ',path_parts_pos(i), ", "
+end do
+write(45,'(a,a,a,f10.3,a)') '"',trim(path_parts(nparts)),'" ',path_parts_pos(nparts), ") "
+write(45,*) "plot 'band_structure.dat' u 1:5 w l lc 'black',\"
+do i=1,nbands-1
+   write(45,'(a,i4,a)') "'' u 1:",i+5," w l lc 'black',\"
+end do
+do i=1,nbands
+   write(45,'(a,i4,a,i4,a)') "'' u 1:",i+4,":(abs($",i+4+nbands,"*0.25)) w p pt 7 ps variable lc 'dark-red',\"
+end do
+close(45)
+
+write(*,*)
+write(*,*) "Band structure analysis done!"
+write(*,*) "Bands written to 'band_structure.dat'"
+write(*,*) "Gnuplot file 'plot_band.gnu' written"
+write(*,*) "Execute gnuplot to obtain image (band_structure.svg) ..."
+call system("gnuplot plot_band.gnu")
+
+end subroutine calc_band
 
 !
 !    calc_stm: evaluates the results of a STM calculation

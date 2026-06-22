@@ -91,7 +91,7 @@ print('''
      need to be added:
      - min1=[name] : name of the first frame (POSCAR file)
      - min2=[name] : name of the last frame (POSCAR file)
-     - nframe=[number] : number of interpolated NEB frames
+     - nframes=[number] : number of interpolated NEB frames
   -restart : Copy all CONTCAR files of the images to 
      POSCAR files such that the calculation can be 
      continued with the current structures
@@ -467,7 +467,6 @@ if build_job:
             for i in range(natoms1):
                print("{:20.11f}".format(xyz_new[i][0]) + " " + "{:20.11f}".format(xyz_new[i][1]) + " " +
                     "{:20.11f}".format(xyz_new[i][2])) 
-            os.chdir("..")
       sys.stdout=original_stdout
       os.chdir("..")
    print(" Generation of NEB input finished!")

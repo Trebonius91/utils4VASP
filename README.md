@@ -76,7 +76,7 @@ Currently included are:
 ## Evaluation:
  - **modify_xdatcar** : Modify trajectory files: multiply, shift, pick etc.
  - **analyze_md** : Analyze MD trajectories for RDFs, diffusion, density etc.
- - **analyze_dft** : Analyze DFT caculations (Bader cahrges, STM, CLS, pDOS)
+ - **analyze_dft** : Analyze DFT caculations (partial charges, STM, CLS, pDOS, bands)
  - **check_geoopt.py** : Monitor geometry optimizations with selective dynamics
  - **manage_neb.py** : Setup, monitor and restart NEB calculations
 

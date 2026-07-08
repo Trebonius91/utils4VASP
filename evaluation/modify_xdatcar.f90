@@ -539,15 +539,15 @@ do i=1,nframes
       end if
 
       do k=1,3
-         do
-            if (act_num(k) > 1d0) then
-               act_num(k) = act_num(k) - 1d0
-            else if (act_num(k) < 0.d0) then
-               act_num(k) = act_num(k) + 1d0
-            else 
-               exit
-            end if
-         end do
+!         do
+!            if (act_num(k) > 1d0) then
+!               act_num(k) = act_num(k) - 1d0
+!            else if (act_num(k) < 0.d0) then
+!               act_num(k) = act_num(k) + 1d0
+!            else 
+!               exit
+!            end if
+!         end do
          xyz(k,j,i)=act_num(k)
       end do
    end do

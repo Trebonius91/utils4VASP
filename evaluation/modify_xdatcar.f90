@@ -66,7 +66,7 @@ logical,allocatable::keep_atoms(:,:)
 logical::smooth_mode
 logical::eval_stat(10)
 logical::shift_cell,multiply_cell,pick_frame,print_xyz,print_last
-character(len=320)::a120,cdum,arg,adum
+character(len=1000)::a120,cdum,arg,adum
 character(len=220)::a220
 character(len=50)::atest
 integer::alloc_stat
@@ -375,12 +375,12 @@ read(14,*) c_vec(1),c_vec(2),c_vec(3)
 !
 !    Read in the elements
 !
-allocate(el_names_read(50))
+allocate(el_names_read(200))
 el_names_read="XX"
 read(14,'(a)') cdum
 read(cdum,*,iostat=readstat) el_names_read
 nelems=0
-do i=1,50
+do i=1,200
    if (el_names_read(i) .eq. "XX") exit
    nelems=nelems+1
 end do
@@ -539,15 +539,15 @@ do i=1,nframes
       end if
 
       do k=1,3
-         do
-            if (act_num(k) > 1d0) then
-               act_num(k) = act_num(k) - 1d0
-            else if (act_num(k) < 0.d0) then
-               act_num(k) = act_num(k) + 1d0
-            else 
-               exit
-            end if
-         end do
+!         do
+!            if (act_num(k) > 1d0) then
+!               act_num(k) = act_num(k) - 1d0
+!            else if (act_num(k) < 0.d0) then
+!               act_num(k) = act_num(k) + 1d0
+!            else 
+!               exit
+!            end if
+!         end do
          xyz(k,j,i)=act_num(k)
       end do
    end do

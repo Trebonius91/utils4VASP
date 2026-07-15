@@ -605,7 +605,7 @@ do i=1,analyze_parts-1
    frames_part(i)=ceiling(real((frame_last-frame_first))/real(analyze_parts))
 end do
 if (analyze_parts .gt. 1) then
-   frames_part(analyze_parts)=nframes-sum(frames_part(1:analyze_parts-1))
+   frames_part(analyze_parts)=(frame_last-frame_first)-sum(frames_part(1:analyze_parts-1))
 else 
    frames_part(1)=frame_last-frame_first+1
 end if

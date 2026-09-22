@@ -1317,6 +1317,33 @@ if (eval_mode) then
    end do
    close(113)
    write(*,*) "File 'mlab_basis_histos.dat' with basis set histograms written."
+
+!
+!     Write all configurations to XDATCAR_MLAB file
+!
+   open(unit=114,file="XDATCAR_MLAB",status="replace")
+   do i=1,conf_num
+      write(114,*) "ML_AB frames written by mlff_select"
+      write(114,*) 1
+      write(114,*) cells(:,1,i)
+      write(114,*) cells(:,2,i)
+      write(114,*) cells(:,3,i)
+      do j=1,nelems_glob
+         write(114,'(a,a)',advance="no") "   ",el_list_confs(j,i)
+      end do
+      write(114,*) ""
+      do j=1,nelems_glob
+         write(114,'(i7,a)',advance="no") el_nums_confs(j,i)," "
+      end do
+      write(114,*) ""
+      write(114,*) "Direct configuration No.",i
+      do j=1,natoms(i)
+         write(114,*) xyz_dir(:,j,i)
+      end do
+   end do
+   close(114)
+
+   write(*,*) "File 'XDATCAR_MLAB' with frame geometries written."
    write(*,*) "Evaluation finished!"
    write(*,*)
    stop

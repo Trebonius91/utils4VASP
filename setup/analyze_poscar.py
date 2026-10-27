@@ -295,7 +295,7 @@ element_valence_dict = {"H": 1.0, "He": 2.0, "Li": 1.0, "BE": 2.0, "B": 3.0,\
                  "AR": 8.0, "SC": 3.0, "TI": 4.0, "V": 5.0, "CR": 6.0,\
                  "MN": 7.0, "FE": 8.0, "CO": 9.0, "NI": 10.0, "CU": 11.0,\
                  "ZN": 12.0, "GA": 3.0, "GE": 4.0, "AS": 5.0, "SE": 6.0,\
-                 "BR": 7.0, "KR": 8.0, "MO": 6.0, "TC": 7.0, "RU": 8.0,\
+                 "BR": 7.0, "KR": 8.0, "MO": 14.0, "TC": 7.0, "RU": 8.0,\
                  "RH": 9.0, "PD": 10.0, "AG": 11.0, "CD": 12.0, "IN": 3.0,\
                  "SN": 4.0, "SB": 5.0, "TE": 6.0, "I": 7.0, "XE": 8.0,\
                  "LA": 11.0, "CE": 12.0, "PR": 13.0, "ND": 14.0, "PM": 16.0,\
@@ -420,7 +420,12 @@ if potcar_job:
    if os.path.isfile("POTCAR"):
       os.system("rm POTCAR")
    for el in elements:
-      path_current=pot_path+"potcar/PAW_PBE.52/"+el+"/POTCAR"
+      if el == "Mo":
+         path_current=pot_path+"potcar/PAW_PBE.52/Mo_sv/POTCAR"
+      elif el == "Hf":
+         path_current=pot_path+"potcar/PAW_PBE.52/Hf_pv/POTCAR"
+      else:
+         path_current=pot_path+"potcar/PAW_PBE.52/"+el+"/POTCAR"
       path_current = os.path.expanduser(path_current)
       if os.path.isfile(path_current):
          os.system("cat "+path_current+" >> POTCAR")

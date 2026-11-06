@@ -371,10 +371,16 @@ for line in outcarlines:
       iterations = 0
       totaltime = totaltime + cputime
       cputime = 0.0
+
 	
    i = i + 1
 for i in range(natoms):
    if no_conv[i]:
       print("Atom " + str(i) + " is not converged yet.")
 print ("The maximum force acts on atom " + str(maxpos) + ".")
+print ("The final energy is: " + str(energy))
+file = open("energy_final.dat", "w")
+file.write(str(energy))
+file.close()
+print ("The final energy is written to file 'energy_final.dat")
 print ("File 'check_geoopt.log' for plots was written!")

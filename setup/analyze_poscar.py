@@ -424,6 +424,8 @@ if potcar_job:
          path_current=pot_path+"potcar/PAW_PBE.52/Mo_sv/POTCAR"
       elif el == "Hf":
          path_current=pot_path+"potcar/PAW_PBE.52/Hf_pv/POTCAR"
+      elif el == "Fe":
+         path_current=pot_path+"potcar/PAW_PBE.52/Fe_pv/POTCAR"
       else:
          path_current=pot_path+"potcar/PAW_PBE.52/"+el+"/POTCAR"
       path_current = os.path.expanduser(path_current)

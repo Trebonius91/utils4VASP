@@ -37,7 +37,7 @@ import os
 import re
 import numpy as np
 from numpy import linalg as LA
-
+from pathlib import Path
 #
 #    only print the overview of utils4VASP scripts/programs and stop
 #
@@ -115,6 +115,110 @@ extent_job=False
 k_dens=0.04
 pot_path="~/"  # The default POTCAR path, change if needed!
 vac_min=7.0
+
+#
+#    Standard definition of POTCAR entries, regarding to 
+#    https://vasp.at/wiki/Choosing_pseudopotentials#Recommended_PAW_potentials
+#
+
+POTCAR_DATA = {
+    "H": ("H", 250),
+    "He": ("He", 478.896),
+    "Li": ("Li_sv", 499.034),
+    "Be": ("Be_sv", 308.768),
+    "B": ("B", 318.614),
+    "C": ("C", 400),
+    "N": ("N", 400),
+    "O": ("O", 400),
+    "F": ("F", 400),
+    "Ne": ("Ne", 343.606),
+    "Na": ("Na_pv", 259.561),
+    "Mg": ("Mg_pv", 403.929),
+    "Al": ("Al", 240.3),
+    "Si": ("Si", 245.345),
+    "P": ("P", 255.04),
+    "S": ("S", 258.689),
+    "Cl": ("Cl", 262.472),
+    "Ar": ("Ar", 266.408),
+    "K": ("K_sv", 259.264),
+    "Ca": ("Ca_sv", 266.622),
+    "Sc": ("Sc_sv", 222.66),
+    "Ti": ("Ti_sv", 274.61),
+    "V": ("V_sv", 263.673),
+    "Cr": ("Cr_pv", 265.681),
+    "Mn": ("Mn_pv", 269.864),
+    "Fe": ("Fe_pv", 293.238),
+    "Co": ("Co_pv", 271.042),
+    "Ni": ("Ni_pv", 367.986),
+    "Cu": ("Cu_pv", 368.648),
+    "Zn": ("Zn", 276.723),
+    "Ga": ("Ga_d", 282.691),
+    "Ge": ("Ge_d", 310.294),
+    "As": ("As", 208.702),
+    "Se": ("Se", 211.555),
+    "Br": ("Br", 216.285),
+    "Kr": ("Kr", 185.331),
+    "Rb": ("Rb_sv", 220.112),
+    "Sr": ("Sr_sv", 229.353),
+    "Y": ("Y_sv", 202.626),
+    "Zr": ("Zr_sv", 229.898),
+    "Nb": ("Nb_sv", 293.235),
+    "Mo": ("Mo_sv", 242.676),
+    "Tc": ("Tc_pv", 263.523),
+    "Ru": ("Ru_pv", 240.049),
+    "Rh": ("Rh_pv", 247.408),
+    "Pd": ("Pd", 250.925),
+    "Ag": ("Ag", 249.844),
+    "Cd": ("Cd", 274.336),
+    "In": ("In_d", 239.211),
+    "Sn": ("Sn_d", 241.083),
+    "Sb": ("Sb", 172.069),
+    "Te": ("Te", 174.982),
+    "I": ("I", 175.647),
+    "Xe": ("Xe", 153.118),
+    "Cs": ("Cs_sv", 220.318),
+    "Ba": ("Ba_sv", 187.181),
+    "La": ("La", 219.292),
+    "Ce": ("Ce", 273.042),
+    "Pr": ("Pr_3", 181.719),
+    "Nd": ("Nd_3", 182.619),
+    "Pm": ("Pm_3", 176.959),
+    "Sm": ("Sm_3", 177.087),
+    "Eu": ("Eu_3", 129.057),
+    "Gd": ("Gd_3", 154.332),
+    "Tb": ("Tb_3", 155.613),
+    "Dy": ("Dy_3", 155.713),
+    "Ho": ("Ho_3", 154.137),
+    "Er": ("Er_3", 155.037),
+    "Tm": ("Tm_3", 149.221),
+    "Yb": ("Yb_3", 188.359),
+    "Lu": ("Lu_3", 154.992),
+    "Hf": ("Hf_pv", 220.334),
+    "Ta": ("Ta_pv", 223.667),
+    "W": ("W_sv", 223.057),
+    "Re": ("Re_pv", 226.216),
+    "Os": ("Os_pv", 228.022),
+    "Ir": ("Ir", 210.864),
+    "Pt": ("Pt", 230.283),
+    "Au": ("Au", 229.943),
+    "Hg": ("Hg", 233.204),
+    "Tl": ("Tl_d", 237.053),
+    "Pb": ("Pb_d", 237.835),
+    "Bi": ("Bi_d", 242.839),
+    "Po": ("Po_d", 264.565),
+    "At": ("At", 161.43),
+    "Rn": ("Rn", 151.497),
+    "Fr": ("Fr_sv", 214.54),
+    "Ra": ("Ra_sv", 237.367),
+    "Ac": ("Ac", 172.351),
+    "Th": ("Th", 247.306),
+    "Pa": ("Pa", 252.193),
+    "U": ("U", 252.502),
+    "Np": ("Np", 254.26),
+    "Pu": ("Pu", 254.353),
+    "Am": ("Am", 255.875),
+    "Cm": ("Cm", 257.953),
+}
 
 # Read in the command line arguments
 for arg in sys.argv:
@@ -417,25 +521,49 @@ def vector_angle(v1, v2):
 #  Generate a POTCAR file for the current POSCAR file, with a given path
 #
 if potcar_job:
+   potcar_root = Path(pot_path).expanduser() / "potcar" / "PAW_PBE.52"
    if os.path.isfile("POTCAR"):
       os.system("rm POTCAR")
-   for el in elements:
-      if el == "Mo":
-         path_current=pot_path+"potcar/PAW_PBE.52/Mo_sv/POTCAR"
-      elif el == "Hf":
-         path_current=pot_path+"potcar/PAW_PBE.52/Hf_pv/POTCAR"
-      elif el == "Fe":
-         path_current=pot_path+"potcar/PAW_PBE.52/Fe_pv/POTCAR"
-      else:
-         path_current=pot_path+"potcar/PAW_PBE.52/"+el+"/POTCAR"
-      path_current = os.path.expanduser(path_current)
-      if os.path.isfile(path_current):
-         os.system("cat "+path_current+" >> POTCAR")
-      else:
-         print("\n No POTCAR template for "+el+" could be found! \n")
-         sys.exit(1)
+   potential_files = []
+   cutoffs = np.empty(len(elements), dtype=float)
+   for i, el in enumerate(elements):
+#
+#    Check missing POTCAR files/strange elements
+#
+      if el not in POTCAR_DATA:
+         raise ValueError(f"No POTCAR entry found for element {el}!")
+      potential, enmax = POTCAR_DATA[el]
+      path_current = potcar_root / potential / "POTCAR"
+#
+#    Further check if all POTCARs are there
+#
+      if not path_current.is_file():
+         raise FileNotFoundError(f"No POTCAR for {el}: {path_current}")
+#
+#    Store all file locations
+#
+      potential_files.append(path_current)
+      cutoffs[i] = enmax
+
+#
+#    Now plug all elemental POTCARs together to new POTCAR file
+#    
+   with open("POTCAR", "wb") as target:
+      for source in potential_files:
+         with open(source, "rb") as handle:
+            import shutil
+            shutil.copyfileobj(handle, target)
 
    print(" The POTCAR file was written.")
+#
+#    Print out helpful statistics
+#
+   encut_min = float(np.max(cutoffs)) if len(cutoffs) else 0.0
+   print(" Elements contained in POTCAR:", elements)
+   print(" Elemental ENMAX values [eV]:",  np.array2string(cutoffs, 
+             formatter={'float_kind': lambda x: f"{x:.3f}"}))
+   print(" Maximum ENMAX (minimum ENCUT) (eV):", encut_min)
+
 #
 #  Calculate the density of the unit cell in the POSCAR file
 #
@@ -700,4 +828,4 @@ if angle_job:
 
 print ('''
  Execution of analyze_poscar.py successfully finished!
-   ''')
+''')

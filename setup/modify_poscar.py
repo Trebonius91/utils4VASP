@@ -104,6 +104,8 @@ print('''
   -select_ind=numbers : Select all atoms by index (start with 1) which
      shall be modified, for example with a shift command. Both single 
      numbers and ranges can be given, for example: select_ind=1,7-13,56
+  -remove_atoms : Remove all atoms with indices chosen by -select_ind
+     or by -select_el
   -insert_struc=a,b,c : Insert the structure given by POSCAR_insert into
      the current POSCAR. The center of mass of the inserted structure is 
      moved to the position given by a,b,c in direct coordinates.
@@ -135,6 +137,7 @@ freeze=False
 cart2frac=False
 writexyz=False
 bottom=False
+remove=False
 insert=False
 select_el=False
 select_ind=False
@@ -185,10 +188,12 @@ for arg in sys.argv:
          writexyz=True
       if param == "-map2unit":
          map2unit=True 
+      if param == "-remove_atoms":
+         remove=True
 
 if ((not multiply_job) and (not shift_job) and (not frac2cart) and (not cart2frac) 
     and (not writexyz) and (not freeze) and (not bottom) and(not insert)
-    and (not map2unit) and (not cut_unitcell)):
+    and (not map2unit) and (not cut_unitcell) and (not remove)):
    print("Please give a least one valid keyword!")
    sys.exit(1)
 
@@ -308,8 +313,11 @@ if ((not multiply_job) and (not shift_job) and (not frac2cart) and (not cart2fra
 #  indices of atoms that are one of the chosen elements
 
 select_mask=[]
+remove_mask=[]
 for name in names:
    select_mask.append(True)
+for name in names:
+   remove_mask.append(False)
 
 
 #
@@ -427,6 +435,27 @@ if map2unit:
          if selective:
             select_new.append(coord_select[i])
    print(" done!\n")
+# 0: REMOVE ALL CHOSEN ATOMS OR ELEMENTS #######################
+if remove:
+   elem_num_new=[0]*nelem
+   if select_el or select_ind:   
+      print(" All chosen atoms and elements will be removed...")
+      for i in range(natoms):
+         if select_mask[i]:
+            names[i] = "ZZ"
+            remove_mask[i] = True 
+      for i in range(nelem):
+         for j in range(natoms):
+            if names[j] == elements[i]:
+               elem_num_new[i] = elem_num_new[i] + 1
+      elem_num=elem_num_new    
+      print(" done!\n")
+   else: 
+      print(" Please select either atoms or elements to be removed!")
+      exit(1)   
+   
+
+
 
 # A: SHIFT OF UNIT CELL ###############################
 if shift_job:
@@ -1104,13 +1133,15 @@ with open("POSCAR_mod","w") as f:
    print("{:18.11f}".format(c_vec[0]) + "  " + "{:18.11f}".format(c_vec[1]) + 
                   "  " + "{:18.11f}".format(c_vec[2]))
    for i in range(nelem):
-      f.write(elements[i] + " ")
+      if elem_num[i] > 0:
+         f.write(elements[i] + " ")
    print(" ")
 # Combine element sections of both molecules  
    elem_num_all=[]
    elements_all =[]
    for i in range(nelem):
-      elem_num_all.append(elem_num[i])
+      if elem_num[i] > 0:
+         elem_num_all.append(elem_num[i])
    for elem in elem_num_all:
       f.write(str(elem) + " ")
    
@@ -1138,9 +1169,9 @@ with open("POSCAR_mod","w") as f:
                   xyz_new[i][j] = xyz_new[i][j] + 1.0
                while xyz_new[i][j] > 1.0:   
                   xyz_new[i][j] = xyz_new[i][j] - 1.0 
-
-         print("{:20.11f}".format(xyz_new[i][0]) + " " + "{:20.11f}".format(xyz_new[i][1]) + " " +
-              "{:20.11f}".format(xyz_new[i][2]) + "     " + select_new[i])
+         if not remove_mask[i]:
+            print("{:20.11f}".format(xyz_new[i][0]) + " " + "{:20.11f}".format(xyz_new[i][1]) + " " +
+                 "{:20.11f}".format(xyz_new[i][2]) + "     " + select_new[i])
    else:       
       for i in range(natoms):
          if (not cartesian):
@@ -1149,7 +1180,8 @@ with open("POSCAR_mod","w") as f:
                   xyz_new[i][j] = xyz_new[i][j] + 1.0 
                while xyz_new[i][j] > 1.0:
                   xyz_new[i][j] = xyz_new[i][j] - 1.0          
-         print("{:20.11f}".format(xyz_new[i][0]) + " " + "{:20.11f}".format(xyz_new[i][1]) + " " +
+         if not remove_mask[i]:
+            print("{:20.11f}".format(xyz_new[i][0]) + " " + "{:20.11f}".format(xyz_new[i][1]) + " " +
               "{:20.11f}".format(xyz_new[i][2])) 
 
 sys.stdout=original_stdout

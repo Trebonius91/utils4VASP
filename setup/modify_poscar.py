@@ -584,6 +584,7 @@ if multiply_job:
    xyz_new=np.zeros((natoms,3))
 #  The individual atoms: their elements   
    names_new=[]
+   remove_mask_new=[]
    if selective:
       select_new=[]
    if phasetrans_job:
@@ -623,9 +624,9 @@ if multiply_job:
                       if selective:
                          select_new.append(coord_select[pos_old])
                    names_new.append(names[pos_old])
-
+                   remove_mask_new.append(remove_mask[pos_old])
          pos_old=pos_old+1
-
+         remove_mask=remove_mask_new
 
    else:
       pos_new=0
@@ -659,7 +660,9 @@ if multiply_job:
                       if selective:
                          select_new.append(coord_select[pos_old])
                    names_new.append(names[pos_old])
+                   remove_mask_new.append(remove_mask[pos_old])
          pos_old=pos_old+1
+         remove_mask=remove_mask_new
 
 #   Scale the unit cell vectors
    a_vec=np.multiply(a_vec,mult_vec[0])
@@ -1108,9 +1111,10 @@ if cut_unitcell:
 # If the bottom option is activated, turn on the selective switch
 if bottom:
    selective = True
+   select_new=[]
    if ((not multiply_job) and (not shift_job) and (not frac2cart) and (not cart2frac)):
       xyz_new=xyz
-      select_new=[]
+ #     select_new=[]
 
 
 # Finally, write out the modified POSCAR file POSCAR_mod
